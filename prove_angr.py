@@ -5,10 +5,11 @@ import angr
 import archinfo
 import utils
 import op_hooks
+import kertypes
 
 
 
-
+# find ioctl handler much shorter
 def find_ioct_handler(driver_path):
     _, text_instr = utils.disasm_file(driver_path)
 
@@ -28,16 +29,17 @@ def find_ioct_handler(driver_path):
     if simgr.found:
         state = simgr.found[0]
         print(f"Raggiunto l'indirizzo {hex(target_instr[0].address)}")
+        print("=== Dump registri ===")
+
+        print(eval(f'state.regs.{target_instr[1]}'))
+
+        addr_final = eval(f'state.regs.{target_instr[1]}').args[0]
+        return addr_final, base_state
+
     else:
         print("Non raggiunto")
         exit(1)
 
-    print("=== Dump registri ===")
-
-    print(eval(f'state.regs.{target_instr[1]}'))
-
-    addr_final = eval(f'state.regs.{target_instr[1]}').args[0]
-    return addr_final
 
 
 
@@ -81,6 +83,32 @@ def find_hook_func():
         utils.print_debug(f'memcpy_hook_address: {hex(memcpy_hook_address)}')
         globals.proj.hook(memcpy_hook_address, hooks.HookMemcpy(cc=globals.mycc))
 
+def hunting(ioctl_handler_addr, drv_base_state):
+    irp = claripy.BVS('irp_buf', 8 * 0x200)
+    # per 64 bits
+    device_object_addr = claripy.BVS('device_object_addr', 64)
+
+
+    state: angr.SimState = globals.proj.factory.call_state(ioctl_handler_addr, device_object_addr, globals.irp_addr, cc=globals.mycc,
+                                                base_state=drv_base_state)
+    
+    # Simbolizza cr8 che contiene IRQL cosi'da esplorare anche aree che richiedono IRQL maggiore
+    cr8 = claripy.BVS('cr8', state.arch.bits)
+    state.registers.store('cr8', cr8)
+
+    irp = claripy.BVS('irp_buf', 8 * 0x200)
+
+    globals.SystemBuffer = claripy.BVS('SystemBuffer', state.arch.bits)
+    globals.Type3InputBuffer = claripy.BVS('Type3InputBuffer', state.arch.bits)
+    globals.UserBuffer = claripy.BVS('UserBuffer', state.arch.bits)
+
+    # Crea alcuni campi di IO_STACK_LOCS come BVS
+    major_func, minor_func, globals.OutputBufferLength, globals.InputBufferLength, globals.IoControlCode = map(lambda x: claripy.BVS(*x), [
+    ("MajorFunction", 8), ("MinorFunction", 8), ('OutputBufferLength', 32), ('InputBufferLength', 32),
+    ('IoControlCode', 32)])
+
+    
+
 def analyze_driver(file_path):
     globals.cfg = globals.proj.analyses.CFGFast()
     
@@ -111,8 +139,10 @@ def analyze_driver(file_path):
                 globals.proj.hook(globals.cfg.indirect_jumps[indirect_jump].ins_addr, opcodes.indirect_jmp_hook, 0)
 
 
-    ioctl_handler_addr = find_ioct_handler(driver)
+    ioctl_handler_addr, base_state = find_ioct_handler(driver)
     print(f'ioctl_handler_addr: {ioctl_handler_addr}')
+
+    hunting(ioctl_handler_addr, base_state)
 
 
 

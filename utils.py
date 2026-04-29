@@ -99,6 +99,7 @@ def tainted_buffer(s):
         return ''
 
 
+# genera degli indirizzi virtuali non sovrapposti
 def next_base_addr(size=0x10000):
     v = globals.FIRST_ADDR
     globals.FIRST_ADDR += size
