@@ -1,105 +1,134 @@
 import argparse
+import globals
 
-
-import pefile
-import capstone as Cs
-from capstone import Cs, CS_ARCH_X86, CS_MODE_32, CS_MODE_64
 import angr
 import archinfo
+import utils
+import op_hooks
 
-project = None
-cfg = None
 
-#function that return list of instructions of .text
-def disasm_file(file_path):
 
-    instruction_list = []
-    text_list = []
-    print(f"[*] Analisi del file: {file_path}")
-    
-    try:
-        # 1. Carica il file PE
-        pe = pefile.PE(file_path)
-    except Exception as e:
-        print(f"[-] Errore nel caricamento del file PE: {e}")
-        return
 
-    # 2. Determina l'architettura per configurare Capstone
-    # 0x014c è IMAGE_FILE_MACHINE_I386 (32-bit)
-    # 0x8664 è IMAGE_FILE_MACHINE_AMD64 (64-bit)
+def find_ioct_handler(driver_path):
+    _, text_instr = utils.disasm_file(driver_path)
 
-    if pe.FILE_HEADER.Machine == 0x014c:
-        md = Cs(CS_ARCH_X86, CS_MODE_32)
-        print("[*] Architettura: x86 (32-bit)")
-    elif pe.FILE_HEADER.Machine == 0x8664:
-        md = Cs(CS_ARCH_X86, CS_MODE_64)
-        print("[*] Architettura: x64 (64-bit)")
+    state = globals.proj.factory.entry_state()
+
+    target_instr = None
+    for x,instr in enumerate(text_instr):
+        if instr.mnemonic == 'mov':
+            if 'qword ptr [rbx + 0xe0]' in instr.op_str:
+                print(f"Trovata a {hex(instr.address)}, registro: {instr.op_str[-3:]}")
+                target_instr = (instr,instr.op_str[-3:],x)
+
+    simgr = globals.proj.factory.simulation_manager(state)
+    simgr.explore(find=target_instr[0].address)
+
+    # Controlla se siamo arrivati
+    if simgr.found:
+        state = simgr.found[0]
+        print(f"Raggiunto l'indirizzo {hex(target_instr[0].address)}")
     else:
-        print("[-] Architettura non supportata da questo script base.")
-        return
+        print("Non raggiunto")
+        exit(1)
 
-    md.skipdata = True
+    print("=== Dump registri ===")
+
+    print(eval(f'state.regs.{target_instr[1]}'))
+
+    addr_final = eval(f'state.regs.{target_instr[1]}').args[0]
+    return addr_final
 
 
-    # 3. Cerca le sezioni eseguibili
-    # Non diamo per scontato che si chiami ".text", controlliamo i permessi
-    IMAGE_SCN_MEM_EXECUTE = 0x20000000
 
-    for section in pe.sections:
-        # Operazione bit-a-bit per verificare se la sezione ha il flag di esecuzione
-        if section.Characteristics & IMAGE_SCN_MEM_EXECUTE:
-            # Pulisce il nome della sezione dai byte nulli
-            sec_name = section.Name.decode('utf-8', errors='ignore').strip('\x00')
-            
-            print(f"\n[+] Trovata sezione eseguibile: {sec_name}")
-            
-            # 4. Estrai i byte grezzi (raw bytes) dalla sezione
-            code_bytes = section.get_data()
-            
-            # 5. Calcola l'indirizzo di memoria reale (ImageBase + VirtualAddress)
-            base_address = pe.OPTIONAL_HEADER.ImageBase + section.VirtualAddress
-            print(f"[+] Indirizzo base per la disassemblatura: {hex(base_address)}")
-            print("-" * 50)
-            
-            # 6. Disassembla con Capstone
-            count = 0
-            for instruction in md.disasm(code_bytes, base_address):
-                if 'text' in sec_name:
-                    text_list.append(instruction)
-                    # Stampa l'indirizzo, il mnemonico (es. MOV, JMP) e gli operandi
-                    print(f"0x{instruction.address:x}:\t{instruction.mnemonic:<8}\t{instruction.op_str}")
+def hook_dangerous_asm(driver_path):
+    total_instr, text_instr = utils.disasm_file(driver_path)
 
-                instruction_list.append(instruction)
-            print("-" * 50)
+    for instr in text_instr:
+        if instr.mnemonic == 'wrmsr':
+            utils.print_debug(f'wrmsr at: {instr.address}')
+            globals.proj.hook(instr.address, op_hooks.wrmsr_hook, instr.size)
+        # elif instr.mnemonic == 'rdmsr':
+        #     utils.print_debug(f'rdmsr at: {instr.address}')
 
-    return instruction_list, text_list
+# SEMPLICEMENTE cerca memcpy e memset con delle sig
+def find_hook_func():
+    # Use signature to find memset and memcpy because they are not imported function in Windows kernel.
+    memset_hook_address = None
+    memcpy_hook_address = None
+    for func_addr in globals.cfg.kb.functions:
+        func = globals.cfg.kb.functions[func_addr]
 
+        prefetchnta_count = 0
+        for block in func.blocks:
+            if len(block.capstone.insns) > 2:
+                if block.capstone.insns[0].mnemonic == 'movzx' and block.capstone.insns[0].op_str == 'edx, dl' and block.capstone.insns[1].mnemonic == 'movabs' and block.capstone.insns[1].op_str == 'r9, 0x101010101010101':
+                    memset_hook_address = func_addr
+                    break
+
+            for insn in block.capstone.insns:
+                if insn.mnemonic == 'prefetchnta':
+                    prefetchnta_count += 1
+        
+        if prefetchnta_count >= 2:
+            memcpy_hook_address = func_addr
+
+    # memset and memcpy are compiled as a function in a complicated way, so we have to find and hook them.
+    if memset_hook_address:
+        utils.print_debug(f'memset_hook_address: {hex(memset_hook_address)}')
+        globals.proj.hook(memset_hook_address, angr.procedures.SIM_PROCEDURES['libc']['memset'](cc=globals.mycc))
+    if memcpy_hook_address:
+        utils.print_debug(f'memcpy_hook_address: {hex(memcpy_hook_address)}')
+        globals.proj.hook(memcpy_hook_address, hooks.HookMemcpy(cc=globals.mycc))
 
 def analyze_driver(file_path):
-    cfg = project.analyses.CFGFast()
+    globals.cfg = globals.proj.analyses.CFGFast()
     
-
-
     # Customize calling convention for the SimProcs.
-    if project.arch.name == archinfo.ArchX86.name:
-        mycc = angr.calling_conventions.SimCCStdcall(project.arch)
+    if globals.proj.arch.name == archinfo.ArchX86.name:
+        globals.mycc = angr.calling_conventions.SimCCStdcall(globals.proj.arch)
     else:
-        mycc = angr.calling_conventions.SimCCMicrosoftAMD64(project.arch)
+        globals.mycc = angr.calling_conventions.SimCCMicrosoftAMD64(globals.proj.arch)
 
-    print("This is the graph:", cfg.model.graph)
+    print("This is the graph:", globals.cfg.model.graph)
+
+    # hooka memcpy e memset
+    find_hook_func()
+
+
+    # solo un hook
+    globals.proj.hook_symbol('ZwMapViewOfSection', hooks.HookZwMapViewOfSection(cc=globals.mycc))
+
+
+    
+    # Hook indirect jump.
+    for indirect_jump in globals.cfg.indirect_jumps:
+        indirect_jum_ins_addr = globals.cfg.indirect_jumps[indirect_jump].ins_addr
+        if len(globals.proj.factory.block(indirect_jum_ins_addr).capstone.insns):
+            op = globals.proj.factory.block(indirect_jum_ins_addr).capstone.insns[0].op_str
+            if op == 'rax' or op == 'rbx' or op == 'rcx' or op == 'rdx':
+                utils.print_debug(f'indirect jmp {hex(globals.cfg.indirect_jumps[indirect_jump].ins_addr)}')
+                globals.proj.hook(globals.cfg.indirect_jumps[indirect_jump].ins_addr, opcodes.indirect_jmp_hook, 0)
+
+
+    ioctl_handler_addr = find_ioct_handler(driver)
+    print(f'ioctl_handler_addr: {ioctl_handler_addr}')
+
 
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument('path', type=str, help='dir (including subdirectory) or file path to the driver(s) to analyze')
+    parser.add_argument('-d', '--debug', default=False, action='store_true', help='print debug info while analyzing (default False)')
 
     args = parser.parse_args()
 
     driver = args.path
 
     print(f"ANALYZING DRIVER: {driver}")
-    instrs = disasm_file(driver)
+    instrs, text_instr = utils.disasm_file(driver)
 
-    project = angr.Project(driver, auto_load_libs=False)
+    globals.proj = angr.Project(driver, auto_load_libs=False)
 
-    analyze_driver(driver)
+
+    # analyze_driver(driver)
