@@ -71,8 +71,8 @@ def disasm_file(file_path):
 
 
 def print_debug(msg):
-    if globals.args.debug:
-        print(f'[Debug] {msg}\n')
+    # if globals.args.debug:
+    print(f'[Debug] {msg}\n')
 
 
 

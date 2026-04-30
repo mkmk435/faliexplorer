@@ -8,6 +8,8 @@ mycc = None
 irp_addr = 0x696969
 irsp_addr = 0x420420
 
+simgr = None
+
 
 SystemBuffer = None
 Type3InputBuffer = None
