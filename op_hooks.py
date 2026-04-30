@@ -5,6 +5,7 @@
 # It checks whether the three registers used by wrmsr are "tainted" – meaning each contains a symbolic expression derived from user input (e.g., a buffer from SystemBuffer)
 def wrmsr_hook(state):
     # Check if we can control the parameters of wrmsr.
+    # print(f"Dentro wrmsr hook, ioctl: {hex(state.solver.eval(globals.IoControlCode))}")
     print("Dentro wrmsr hook")
 
     if utils.tainted_buffer(state.regs.eax) and utils.tainted_buffer(state.regs.ecx) and utils.tainted_buffer(state.regs.edx):

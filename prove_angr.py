@@ -135,9 +135,24 @@ def hunting(ioctl_handler_addr, drv_base_state):
 
     irp = claripy.BVS('irp_buf', 8 * 0x200)
 
-    globals.SystemBuffer = claripy.BVS('SystemBuffer', state.arch.bits)
-    globals.Type3InputBuffer = claripy.BVS('Type3InputBuffer', state.arch.bits)
-    globals.UserBuffer = claripy.BVS('UserBuffer', state.arch.bits)
+
+    # === SYSTEM BUFFER ===
+    sysbuf_addr = utils.next_base_addr()
+    sysbuf_content = claripy.BVS('SystemBuffer', 8 * 0x200)
+    state.memory.store(sysbuf_addr, sysbuf_content, disable_actions=True, inspect=False)
+    globals.SystemBuffer = sysbuf_addr
+
+    # === TYPE3 INPUT BUFFER (METHOD_NEITHER) ===
+    type3_addr = utils.next_base_addr()
+    type3_content = claripy.BVS('Type3InputBuffer', 8 * 0x200)
+    state.memory.store(type3_addr, type3_content, disable_actions=True, inspect=False)
+    globals.Type3InputBuffer = type3_addr
+
+    # === USER BUFFER ===
+    userbuf_addr = utils.next_base_addr()
+    userbuf_content = claripy.BVS('UserBuffer', 8 * 0x200)
+    state.memory.store(userbuf_addr, userbuf_content, disable_actions=True, inspect=False)
+    globals.UserBuffer = userbuf_addr
 
 
 
@@ -149,8 +164,8 @@ def hunting(ioctl_handler_addr, drv_base_state):
     # state.inspect.b('mem_write', when=angr.BP_BEFORE, action=breakpoints.b_mem_write)
     # state.inspect.b('call', when=angr.BP_BEFORE, action=breakpoints.b_call)
 
-    state.memory.store(globals.irp_addr, irp)
 
+    state.memory.store(globals.irp_addr, irp)
 
     # Crea alcuni campi di IO_STACK_LOCS come BVS
     major_func, minor_func, globals.OutputBufferLength, globals.InputBufferLength, globals.IoControlCode = map(lambda x: claripy.BVS(*x), [
@@ -166,6 +181,7 @@ def hunting(ioctl_handler_addr, drv_base_state):
     state.mem[globals.irp_addr].IRP.RequestorMode = 1
     state.mem[globals.irsp_addr].IO_STACK_LOCATION.MajorFunction = 14
     state.mem[globals.irsp_addr].IO_STACK_LOCATION.MinorFunction = minor_func
+
 
     # Set the initial value of the IO_STACK_LOCATION.
     _params = state.mem[globals.irsp_addr].IO_STACK_LOCATION.Parameters
@@ -220,10 +236,17 @@ def analyze_driver(file_path):
 
 
     # solo un hook
-    globals.proj.hook_symbol('ZwMapViewOfSection', hooks.HookZwMapViewOfSection(cc=globals.mycc))
     globals.proj.hook_symbol('ZwOpenSection', hooks.HookZwOpenSection(cc=globals.mycc))
     globals.proj.hook_symbol('ObReferenceObjectByHandle', hooks.HookObReferenceObjectByHandle(cc=globals.mycc))
     globals.proj.hook_symbol('RtlInitUnicodeString', hooks.HookRtlInitUnicodeString(cc=globals.mycc))
+    globals.proj.hook_symbol('IoCreateDevice', hooks.HookIoCreateDevice(cc=globals.mycc))    
+    globals.proj.hook_symbol('HalTranslateBusAddress', hooks.HookHalTranslateBusAddress(cc=globals.mycc))
+    globals.proj.hook_symbol('IoCreateSymbolicLink', hooks.HookIoCreateSymbolicLink(cc=globals.mycc))
+
+
+
+
+    globals.proj.hook_symbol('ZwMapViewOfSection', hooks.HookZwMapViewOfSection(cc=globals.mycc))
 
     hook_dangerous_asm(driver)
     

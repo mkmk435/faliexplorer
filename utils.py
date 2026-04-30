@@ -81,8 +81,8 @@ def print_debug(msg):
 
 def print_vuln(title, description, state, parameters, others):
     # Validate the address.
-    if state.addr < 0x1337:
-        return
+    # if state.addr < 0x1337:
+    #     return
 
     data = {}
     data['title'] = f'{title}'
