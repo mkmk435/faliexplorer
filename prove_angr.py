@@ -1,5 +1,6 @@
 import argparse
 import globals
+import breakpoints
 
 import angr
 import archinfo
@@ -8,14 +9,31 @@ import op_hooks
 import kertypes
 import hooks
 import claripy
+import logging
 
+def fixup_import_symbols(state):
+    globals.star_ps_process_type = fix_object_type_import(state, "PsProcessType", globals.ps_process_type)
 
+def fix_object_type_import(state: angr.SimState, object_type_name: str, object_type_import):    
+    if not object_type_import:
+        return None
+    
+    # An "object_type_import" points to a kernel memory containing our kernel-defined *ObjectType, which ioctlance intialize to 0
+    ps_object_type = state.memory.load(object_type_import, state.arch.bytes, endness=state.arch.memory_endness)
+    if not ps_object_type.concrete:
+        utils.print_error(f"Unable to correctly evaluate {object_type_name} import")
+        return None
+
+    # We need to store a symbolic value to represent the *ObjectType to recognize it later inside a kernel function hook
+    star_ps_object_type = claripy.BVS(f'*{object_type_name}', state.arch.bits)
+    state.memory.store(ps_object_type, star_ps_object_type, state.arch.bytes, endness=state.arch.memory_endness, disable_actions=True, inspect=False)
+    return star_ps_object_type
 
 def find_ioct_handler(driver_path):
     _, text_instr = utils.disasm_file(driver_path)
 
-    driver_object_addr = 0xAAAA0000  
-    registry_path_addr = 0xBBBB0000  
+    driver_object_addr = utils.next_base_addr()
+    registry_path_addr = utils.next_base_addr()
     
     state = globals.proj.factory.call_state(
         globals.proj.entry, 
@@ -24,6 +42,11 @@ def find_ioct_handler(driver_path):
         cc=globals.mycc
     )
 
+    state.globals['open_section_handles'] = ()
+    state.globals['tainted_unicode_strings'] = ()
+    state.globals['ioctl_handler'] = 0
+    fixup_import_symbols(state)
+    
     target_instr = None
     for x, instr in enumerate(text_instr):
         if instr.mnemonic == 'mov':
@@ -99,9 +122,10 @@ def find_hook_func():
 def hunting(ioctl_handler_addr, drv_base_state):
     irp = claripy.BVS('irp_buf', 8 * 0x200)
     # per 64 bits
+
     device_object_addr = claripy.BVS('device_object_addr', drv_base_state.arch.bits)
 
-
+    drv_base_state.globals['open_section_handles'] = ()
     state: angr.SimState = globals.proj.factory.call_state(ioctl_handler_addr, device_object_addr, globals.irp_addr, cc=globals.mycc,
                                                 base_state=drv_base_state)
     
@@ -115,10 +139,25 @@ def hunting(ioctl_handler_addr, drv_base_state):
     globals.Type3InputBuffer = claripy.BVS('Type3InputBuffer', state.arch.bits)
     globals.UserBuffer = claripy.BVS('UserBuffer', state.arch.bits)
 
+
+
+    # while len(state.inspect._breakpoints['mem_write']) > 0:
+    #     state.inspect._breakpoints['mem_write'].pop()
+    # while len(state.inspect._breakpoints['call']) > 0:
+    #     state.inspect._breakpoints['call'].pop()
+    # state.inspect.b('mem_read', when=angr.BP_BEFORE, action=breakpoints.b_mem_read)
+    # state.inspect.b('mem_write', when=angr.BP_BEFORE, action=breakpoints.b_mem_write)
+    # state.inspect.b('call', when=angr.BP_BEFORE, action=breakpoints.b_call)
+
+    state.memory.store(globals.irp_addr, irp)
+
+
     # Crea alcuni campi di IO_STACK_LOCS come BVS
     major_func, minor_func, globals.OutputBufferLength, globals.InputBufferLength, globals.IoControlCode = map(lambda x: claripy.BVS(*x), [
     ("MajorFunction", 8), ("MinorFunction", 8), ('OutputBufferLength', 32), ('InputBufferLength', 32),
     ('IoControlCode', 32)])
+
+    fixup_import_symbols(state)
 
     # Set the initial value of the IRP.
     state.mem[globals.irp_addr].IRP.Tail.Overlay.s.u.CurrentStackLocation = globals.irsp_addr
@@ -149,8 +188,8 @@ def hunting(ioctl_handler_addr, drv_base_state):
 
     while (len(globals.simgr.active) > 0 or len(globals.simgr.deferred) > 0):# and not ed.state_exploded_bool:
         try:
-            # globals.simgr.step(num_inst=1)
-            globals.simgr.step()
+            globals.simgr.step(num_inst=1)
+            # globals.simgr.step()
 
         except Exception as e:
             # utils.print_error(f'error on state {globals.simgr.active}: {str(e)}')
@@ -182,6 +221,9 @@ def analyze_driver(file_path):
 
     # solo un hook
     globals.proj.hook_symbol('ZwMapViewOfSection', hooks.HookZwMapViewOfSection(cc=globals.mycc))
+    globals.proj.hook_symbol('ZwOpenSection', hooks.HookZwOpenSection(cc=globals.mycc))
+    globals.proj.hook_symbol('ObReferenceObjectByHandle', hooks.HookObReferenceObjectByHandle(cc=globals.mycc))
+    globals.proj.hook_symbol('RtlInitUnicodeString', hooks.HookRtlInitUnicodeString(cc=globals.mycc))
 
     hook_dangerous_asm(driver)
     
@@ -194,9 +236,11 @@ def analyze_driver(file_path):
     #             utils.print_debug(f'indirect jmp {hex(globals.cfg.indirect_jumps[indirect_jump].ins_addr)}')
     #             globals.proj.hook(globals.cfg.indirect_jumps[indirect_jump].ins_addr, opcodes.indirect_jmp_hook, 0)
 
+    globals.ps_process_type = utils.resolve_import_symbol_in_object(globals.proj.loader.main_object, "PsProcessType")
+
 
     ioctl_handler_addr, base_state = find_ioct_handler(driver)
-    print(f'ioctl_handler_addr: {ioctl_handler_addr}')
+    print(f'ioctl_handler_addr: {hex(ioctl_handler_addr)}')
 
     hunting(ioctl_handler_addr, base_state)
 
@@ -207,14 +251,14 @@ if __name__ == "__main__":
     parser.add_argument('path', type=str, help='dir (including subdirectory) or file path to the driver(s) to analyze')
     parser.add_argument('-d', '--debug', default=False, action='store_true', help='print debug info while analyzing (default False)')
 
-    args = parser.parse_args()
+    globals.args = parser.parse_args()
 
-    driver = args.path
+    driver = globals.args.path
 
     print(f"ANALYZING DRIVER: {driver}")
     instrs, text_instr = utils.disasm_file(driver)
 
-    globals.proj = angr.Project(driver, auto_load_libs=False)
-
+    globals.proj = angr.Project(driver)#, auto_load_libs=False)
+    logging.getLogger('angr').setLevel(logging.ERROR)
 
     analyze_driver(driver)

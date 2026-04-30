@@ -3,6 +3,10 @@ import pefile
 import capstone as Cs
 from capstone import Cs, CS_ARCH_X86, CS_MODE_32, CS_MODE_64
 import globals
+import cle
+from cle.backends.pe.relocation.generic import DllImport
+from typing import Optional
+
 
 
 #function that return list of instructions of .text
@@ -71,9 +75,54 @@ def disasm_file(file_path):
 
 
 def print_debug(msg):
-    # if globals.args.debug:
-    print(f'[Debug] {msg}\n')
+    if globals.args.debug:
+        print(f'[Debug] {msg}\n')
 
+
+def print_vuln(title, description, state, parameters, others):
+    # Validate the address.
+    if state.addr < 0x1337:
+        return
+
+    data = {}
+    data['title'] = f'{title}'
+    data['description'] = f'{description}'
+    data['state'] = str(state)
+    data['parameters'] = parameters
+
+    IoControlCode = None 
+    vuln_nnuple = None
+    if (globals.IoControlCode is None):
+        vuln_nnuple = (title, state.addr)
+    else:
+        IoControlCode = hex(state.solver.eval(globals.IoControlCode))
+        vuln_nnuple = (title, state.addr, str(IoControlCode))
+        # Evaluate the target buffers.
+        SystemBuffer = hex(state.solver.eval(globals.SystemBuffer))
+        Type3InputBuffer = hex(state.solver.eval(globals.Type3InputBuffer))
+        UserBuffer = hex(state.solver.eval(globals.UserBuffer))
+        InputBufferLength = hex(state.solver.eval(globals.InputBufferLength))
+        OutputBufferLength = hex(state.solver.eval(globals.OutputBufferLength))
+    
+        # Set the information of the vulnerability.
+        data['eval'] = {'IoControlCode': IoControlCode, 'SystemBuffer': SystemBuffer, 'Type3InputBuffer': Type3InputBuffer, 'UserBuffer': UserBuffer, 'InputBufferLength': InputBufferLength, 'OutputBufferLength': OutputBufferLength}
+    
+    
+    if vuln_nnuple in globals.vulns_unique:
+        return
+    
+    globals.vulns_unique.add((title, state.addr))
+   
+    data['others'] = others
+    if 'tainted_ProbeForRead' in state.globals and len(state.globals['tainted_ProbeForRead']) > 0:
+        data['others']['ProbeForRead'] = state.globals['tainted_ProbeForRead']
+    if 'tainted_ProbeForWrite' in state.globals and len(state.globals['tainted_ProbeForWrite']) > 0:
+        data['others']['ProbeForWrite'] = state.globals['tainted_ProbeForWrite']
+    if 'tainted_MmIsAddressValid' in state.globals and len(state.globals['tainted_MmIsAddressValid']) > 0:
+        data['others']['MmIsAddressValid'] = state.globals['tainted_MmIsAddressValid']
+    
+    print(json.dumps(data, indent=4), '\n')
+    globals.vulns_info.append(data)
 
 
 # Function that takes in input a symbolic expression object (ex. an expression). it basically takes an expr as input (for example i pass a register) and checks 
@@ -104,3 +153,19 @@ def next_base_addr(size=0x10000):
     v = globals.FIRST_ADDR
     globals.FIRST_ADDR += size
     return v
+
+
+def resolve_import_symbol_in_object(pe_object: cle.backends.pe.pe.PE, symbol_name: str) -> Optional[int]:
+    if symbol_name not in pe_object.imports:
+        return None
+    
+    sym_import: DllImport = pe_object.imports[symbol_name]
+    return pe_object.min_addr + sym_import.relative_addr
+
+def resolve_import_symbol(loader: cle.loader.Loader, symbol_name: str) -> Optional[int]:
+    for obj in loader.all_objects:
+       result = resolve_import_symbol_in_object(obj, symbol_name)
+       if result:
+            return result
+    
+    return None
