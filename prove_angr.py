@@ -136,33 +136,33 @@ def hunting(ioctl_handler_addr, drv_base_state):
     irp = claripy.BVS('irp_buf', 8 * 0x200)
 
 
-    # === SYSTEM BUFFER ===
     sysbuf_addr = utils.next_base_addr()
     sysbuf_content = claripy.BVS('SystemBuffer', 8 * 0x200)
     state.memory.store(sysbuf_addr, sysbuf_content, disable_actions=True, inspect=False)
     globals.SystemBuffer = sysbuf_addr
 
-    # === TYPE3 INPUT BUFFER (METHOD_NEITHER) ===
     type3_addr = utils.next_base_addr()
     type3_content = claripy.BVS('Type3InputBuffer', 8 * 0x200)
     state.memory.store(type3_addr, type3_content, disable_actions=True, inspect=False)
     globals.Type3InputBuffer = type3_addr
 
-    # === USER BUFFER ===
     userbuf_addr = utils.next_base_addr()
     userbuf_content = claripy.BVS('UserBuffer', 8 * 0x200)
     state.memory.store(userbuf_addr, userbuf_content, disable_actions=True, inspect=False)
     globals.UserBuffer = userbuf_addr
 
+    # globals.SystemBuffer = claripy.BVS('SystemBuffer', state.arch.bits)
+    # globals.Type3InputBuffer = claripy.BVS('Type3InputBuffer', state.arch.bits)
+    # globals.UserBuffer = claripy.BVS('UserBuffer', state.arch.bits)
 
 
-    # while len(state.inspect._breakpoints['mem_write']) > 0:
-    #     state.inspect._breakpoints['mem_write'].pop()
-    # while len(state.inspect._breakpoints['call']) > 0:
-    #     state.inspect._breakpoints['call'].pop()
-    # state.inspect.b('mem_read', when=angr.BP_BEFORE, action=breakpoints.b_mem_read)
-    # state.inspect.b('mem_write', when=angr.BP_BEFORE, action=breakpoints.b_mem_write)
-    # state.inspect.b('call', when=angr.BP_BEFORE, action=breakpoints.b_call)
+    while len(state.inspect._breakpoints['mem_write']) > 0:
+        state.inspect._breakpoints['mem_write'].pop()
+    while len(state.inspect._breakpoints['call']) > 0:
+        state.inspect._breakpoints['call'].pop()
+    state.inspect.b('mem_read', when=angr.BP_BEFORE, action=breakpoints.b_mem_read)
+    state.inspect.b('mem_write', when=angr.BP_BEFORE, action=breakpoints.b_mem_write)
+    state.inspect.b('call', when=angr.BP_BEFORE, action=breakpoints.b_call)
 
 
     state.memory.store(globals.irp_addr, irp)
@@ -242,6 +242,8 @@ def analyze_driver(file_path):
     globals.proj.hook_symbol('IoCreateDevice', hooks.HookIoCreateDevice(cc=globals.mycc))    
     globals.proj.hook_symbol('HalTranslateBusAddress', hooks.HookHalTranslateBusAddress(cc=globals.mycc))
     globals.proj.hook_symbol('IoCreateSymbolicLink', hooks.HookIoCreateSymbolicLink(cc=globals.mycc))
+    globals.proj.hook_symbol("NdisRegisterProtocolDriver", hooks.HookNdisRegisterProtocolDriver(cc=globals.mycc))
+
 
 
 
@@ -281,7 +283,7 @@ if __name__ == "__main__":
     print(f"ANALYZING DRIVER: {driver}")
     instrs, text_instr = utils.disasm_file(driver)
 
-    globals.proj = angr.Project(driver)#, auto_load_libs=False)
+    globals.proj = angr.Project(driver, auto_load_libs=False)
     logging.getLogger('angr').setLevel(logging.ERROR)
 
     analyze_driver(driver)

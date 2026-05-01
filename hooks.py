@@ -33,7 +33,8 @@ class HookZwMapViewOfSection(angr.SimProcedure):
 
         # Check if we can control the parameters of ZwMapViewOfSection.
         # print(SectionHandle.symbolic)
-        print(SectionHandle, ProcessHandle, BaseAddress, ZeroBits, CommitSize, SectionOffset, ViewSize, InheritDisposition, AllocationType, Win32Protect)
+        # utils.print_debug(SectionHandle, ProcessHandle, BaseAddress, ZeroBits, CommitSize, SectionOffset, ViewSize, InheritDisposition, AllocationType, Win32Protect)
+        # print(SectionHandle, ProcessHandle, BaseAddress, ZeroBits, CommitSize, SectionOffset, ViewSize, InheritDisposition, AllocationType, Win32Protect)
 
         if SectionHandle.symbolic and (ProcessHandle.symbolic or self.state.solver.eval(ProcessHandle == -1) or BaseAddress.symbolic or (CommitSize.symbolic and ViewSize.symbolic)):
             ret_addr = hex(self.state.callstack.ret_addr)
@@ -82,7 +83,7 @@ class HookIoCreateDevice(angr.SimProcedure):
         if (device_name_str == "") or (device_name_str == None):
             return 0
         
-        utils.print_info(f'device name: {device_name_str}')
+        print(f'device name: {device_name_str}')
         if "DeviceName" not in globals.basic_info:
             globals.basic_info["DeviceName"] = []
         
@@ -102,7 +103,7 @@ class HookIoCreateSymbolicLink(angr.SimProcedure):
         if (symbolic_link_str == "") and (symbolic_link_str == None):
             return 0
         
-        utils.print_info(f'Symbolic link \"{symbolic_link_str}\" to \"{device_name_str}\"')
+        print(f'Symbolic link \"{symbolic_link_str}\" to \"{device_name_str}\"')
 
         if "SymbolicLink" not in globals.basic_info:
             globals.basic_info["SymbolicLink"] = []
@@ -126,6 +127,11 @@ class HookObReferenceObjectByHandle(angr.SimProcedure):
             self.state.globals['tainted_eprocess'] += (str(object), )
         return 0
 
+
+class HookNdisRegisterProtocolDriver(angr.SimProcedure):
+    def run(self, ProtocolDriverContext, ProtocolCharacteristics, NdisProtocolHandle):
+        self.state.memory.store(NdisProtocolHandle, 0x87, self.state.arch.bytes, endness=self.state.arch.memory_endness, disable_actions=True, inspect=False)
+        return 0
 
 # 
 class HookRtlInitUnicodeString(angr.SimProcedure):

@@ -26,3 +26,5 @@ UserBuffer = None
 InputBufferLength = None
 OutputBufferLength = None
 IoControlCode = None
+
+basic_info = {}

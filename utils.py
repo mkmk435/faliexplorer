@@ -169,3 +169,22 @@ def resolve_import_symbol(loader: cle.loader.Loader, symbol_name: str) -> Option
             return result
     
     return None
+
+
+def read_buffer_from_unicode_string(state, unicode_string_pointer):
+    us = state.mem[unicode_string_pointer].struct._UNICODE_STRING
+    length_expr = us.Length.resolved
+    max_length_expr = us.MaximumLength.resolved
+    buffer_ptr_expr = us.Buffer.resolved
+
+    length = state.solver.eval(length_expr)
+    max_length = state.solver.eval(max_length_expr)
+    buffer_addr = state.solver.eval(buffer_ptr_expr)
+
+    if (length == 0) or (max_length == 0):
+        return None
+    
+    raw_data = state.memory.load(buffer_addr, length, disable_actions=True, inspect=False)
+    device_name_str = state.solver.eval(raw_data, cast_to=bytes).decode("utf-16le", errors="ignore")
+
+    return device_name_str.strip() if device_name_str is not None else None

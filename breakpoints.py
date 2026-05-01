@@ -19,7 +19,7 @@ def b_mem_write_DriverStartIo(state):
     utils.print_info(f'DriverStartIo: {hex(globals.DriverStartIo)}')
 
 def b_mem_read(state):
-    utils.print_debug(f'mem_read {state}, {state.inspect.mem_read_address}, {state.inspect.mem_read_expr}, {state.inspect.mem_read_length}, {state.inspect.mem_read_condition}')
+    # utils.print_debug(f'mem_read {state}, {state.inspect.mem_read_address}, {state.inspect.mem_read_expr}, {state.inspect.mem_read_length}, {state.inspect.mem_read_condition}')
     
     # Iterate all target buffers.
     for target in globals.NPD_TARGETS:
@@ -75,7 +75,7 @@ def b_mem_read(state):
                 state.memory.store(addr, mem, 0x200, disable_actions=True, inspect=False)
 
 def b_mem_write(state):
-    utils.print_debug(f'mem_write {state}, {state.inspect.mem_write_address}, {state.inspect.mem_write_expr}, {state.inspect.mem_write_length}, {state.inspect.mem_write_condition}')
+    # utils.print_debug(f'mem_write {state}, {state.inspect.mem_write_address}, {state.inspect.mem_write_expr}, {state.inspect.mem_write_length}, {state.inspect.mem_write_condition}')
 
     # Iterate all target buffers.
     for target in globals.NPD_TARGETS:

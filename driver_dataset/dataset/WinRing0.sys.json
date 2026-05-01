@@ -1,0 +1,347 @@
+{
+    "basic": {
+        "path": "driver_dataset/dataset/WinRing0.sys",
+        "time": {
+            "ioctl handler": 0,
+            "hunting vulns": 6
+        },
+        "memory": {
+            "ioctl handler": 20736,
+            "hunting vulns": 304264
+        },
+        "unique addr": {
+            "ioctl handler": 59,
+            "hunting vulns": 312
+        },
+        "DeviceName": [
+            "\\Device\\WinRing0_1_2_0"
+        ],
+        "SymbolicLink": [
+            "\\DosDevices\\WinRing0_1_2_0"
+        ],
+        "ioctl handler": "0x110d8",
+        "IoControlCodes": [
+            "0x9c406104",
+            "0x9c40a0c8",
+            "0x9c40a0d8",
+            "0x9c40a108",
+            "0x9c40a148",
+            "0x9c40a0e0",
+            "0x9c40a0dc",
+            "0x9c406144",
+            "0x9c4060d4",
+            "0x9c402004",
+            "0x9c402084",
+            "0x9c40208c",
+            "0x9c4060c4",
+            "0x9c4060cc",
+            "0x9c4060d0",
+            "0x9c402090",
+            "0x9c402088",
+            "0x9c402000"
+        ]
+    },
+    "vuln": [
+        {
+            "title": "map physical memory",
+            "description": "MmMapIoSpace - PhysicalAddress and NumberOfBytes controllable",
+            "state": "<SimState @ 0x100020>",
+            "parameters": {
+                "PhysicalAddress": "<BV64 *<BV64 SystemBuffer_11_64>_23_4096[63:0]>",
+                "NumberOfBytes": "<BV64 0x0 .. *<BV64 SystemBuffer_11_64>_23_4096[95:64] * *<BV64 SystemBuffer_11_64>_23_4096[127:96]>"
+            },
+            "eval": {
+                "IoControlCode": "0x9c406104",
+                "SystemBuffer": "0x44560000",
+                "Type3InputBuffer": "0x0",
+                "UserBuffer": "0x0",
+                "InputBufferLength": "0x10",
+                "OutputBufferLength": "0x0"
+            },
+            "others": {
+                "return address": "0x11565"
+            }
+        },
+        {
+            "title": "null pointer dereference - input buffer",
+            "description": "read input buffer",
+            "state": "<SimState @ 0x11317>",
+            "parameters": {},
+            "eval": {
+                "IoControlCode": "0x9c40a0c8",
+                "SystemBuffer": "0x0",
+                "Type3InputBuffer": "0x0",
+                "UserBuffer": "0x0",
+                "InputBufferLength": "0x0",
+                "OutputBufferLength": "0x0"
+            },
+            "others": {
+                "read from": "<BV64 SystemBuffer_11_64>"
+            }
+        },
+        {
+            "title": "null pointer dereference - input buffer",
+            "description": "read input buffer",
+            "state": "<SimState @ 0x11317>",
+            "parameters": {},
+            "eval": {
+                "IoControlCode": "0x9c40a0d8",
+                "SystemBuffer": "0x0",
+                "Type3InputBuffer": "0x0",
+                "UserBuffer": "0x0",
+                "InputBufferLength": "0x0",
+                "OutputBufferLength": "0x0"
+            },
+            "others": {
+                "read from": "<BV64 SystemBuffer_11_64>"
+            }
+        },
+        {
+            "title": "null pointer dereference - input buffer",
+            "description": "read input buffer",
+            "state": "<SimState @ 0x11317>",
+            "parameters": {},
+            "eval": {
+                "IoControlCode": "0x9c40a0e0",
+                "SystemBuffer": "0x0",
+                "Type3InputBuffer": "0x0",
+                "UserBuffer": "0x0",
+                "InputBufferLength": "0x0",
+                "OutputBufferLength": "0x0"
+            },
+            "others": {
+                "read from": "<BV64 SystemBuffer_11_64>"
+            }
+        },
+        {
+            "title": "arbitrary out",
+            "description": "",
+            "state": "<SimState @ 0x11328>",
+            "parameters": {
+                "Port": "<BV16 *<BV64 SystemBuffer_11_64>_45_4096[15:0]>",
+                "Data": "<BV8 *<BV64 SystemBuffer_11_64>_45_4096[39:32]>"
+            },
+            "eval": {
+                "IoControlCode": "0x9c40a0e0",
+                "SystemBuffer": "0x445b0000",
+                "Type3InputBuffer": "0x0",
+                "UserBuffer": "0x0",
+                "InputBufferLength": "0x0",
+                "OutputBufferLength": "0x0"
+            },
+            "others": {}
+        },
+        {
+            "title": "null pointer dereference - input buffer",
+            "description": "read input buffer",
+            "state": "<SimState @ 0x11317>",
+            "parameters": {},
+            "eval": {
+                "IoControlCode": "0x9c40a0dc",
+                "SystemBuffer": "0x0",
+                "Type3InputBuffer": "0x0",
+                "UserBuffer": "0x0",
+                "InputBufferLength": "0x0",
+                "OutputBufferLength": "0x0"
+            },
+            "others": {
+                "read from": "<BV64 SystemBuffer_11_64>"
+            }
+        },
+        {
+            "title": "arbitrary out",
+            "description": "",
+            "state": "<SimState @ 0x11332>",
+            "parameters": {
+                "Port": "<BV16 *<BV64 SystemBuffer_11_64>_47_4096[15:0]>",
+                "Data": "<BV8 *<BV64 SystemBuffer_11_64>_47_4096[39:32]>"
+            },
+            "eval": {
+                "IoControlCode": "0x9c40a0dc",
+                "SystemBuffer": "0x445c0000",
+                "Type3InputBuffer": "0x0",
+                "UserBuffer": "0x0",
+                "InputBufferLength": "0x0",
+                "OutputBufferLength": "0x0"
+            },
+            "others": {}
+        },
+        {
+            "title": "null pointer dereference - input buffer",
+            "description": "read input buffer",
+            "state": "<SimState @ 0x11194>",
+            "parameters": {},
+            "eval": {
+                "IoControlCode": "0x9c4060d4",
+                "SystemBuffer": "0x0",
+                "Type3InputBuffer": "0x0",
+                "UserBuffer": "0x0",
+                "InputBufferLength": "0x0",
+                "OutputBufferLength": "0x0"
+            },
+            "others": {
+                "read from": "<BV64 SystemBuffer_11_64>"
+            }
+        },
+        {
+            "title": "null pointer dereference - input buffer",
+            "description": "write input buffer",
+            "state": "<SimState @ 0x1121d>",
+            "parameters": {},
+            "eval": {
+                "IoControlCode": "0x9c402004",
+                "SystemBuffer": "0x0",
+                "Type3InputBuffer": "0x0",
+                "UserBuffer": "0x0",
+                "InputBufferLength": "0x0",
+                "OutputBufferLength": "0x0"
+            },
+            "others": {
+                "write to": "<BV64 SystemBuffer_11_64>"
+            }
+        },
+        {
+            "title": "null pointer dereference - input buffer",
+            "description": "read input buffer",
+            "state": "<SimState @ 0x11468>",
+            "parameters": {},
+            "eval": {
+                "IoControlCode": "0x9c402084",
+                "SystemBuffer": "0x0",
+                "Type3InputBuffer": "0x0",
+                "UserBuffer": "0x0",
+                "InputBufferLength": "0x0",
+                "OutputBufferLength": "0x0"
+            },
+            "others": {
+                "read from": "<BV64 SystemBuffer_11_64>"
+            }
+        },
+        {
+            "title": "null pointer dereference - input buffer",
+            "description": "read input buffer",
+            "state": "<SimState @ 0x114d0>",
+            "parameters": {},
+            "eval": {
+                "IoControlCode": "0x9c40208c",
+                "SystemBuffer": "0x0",
+                "Type3InputBuffer": "0x0",
+                "UserBuffer": "0x0",
+                "InputBufferLength": "0x0",
+                "OutputBufferLength": "0x0"
+            },
+            "others": {
+                "read from": "<BV64 SystemBuffer_11_64>"
+            }
+        },
+        {
+            "title": "null pointer dereference - input buffer",
+            "description": "read input buffer",
+            "state": "<SimState @ 0x11194>",
+            "parameters": {},
+            "eval": {
+                "IoControlCode": "0x9c4060c4",
+                "SystemBuffer": "0x0",
+                "Type3InputBuffer": "0x0",
+                "UserBuffer": "0x0",
+                "InputBufferLength": "0x0",
+                "OutputBufferLength": "0x0"
+            },
+            "others": {
+                "read from": "<BV64 SystemBuffer_11_64>"
+            }
+        },
+        {
+            "title": "null pointer dereference - input buffer",
+            "description": "read input buffer",
+            "state": "<SimState @ 0x11194>",
+            "parameters": {},
+            "eval": {
+                "IoControlCode": "0x9c4060cc",
+                "SystemBuffer": "0x0",
+                "Type3InputBuffer": "0x0",
+                "UserBuffer": "0x0",
+                "InputBufferLength": "0x0",
+                "OutputBufferLength": "0x0"
+            },
+            "others": {
+                "read from": "<BV64 SystemBuffer_11_64>"
+            }
+        },
+        {
+            "title": "null pointer dereference - input buffer",
+            "description": "read input buffer",
+            "state": "<SimState @ 0x11194>",
+            "parameters": {},
+            "eval": {
+                "IoControlCode": "0x9c4060d0",
+                "SystemBuffer": "0x0",
+                "Type3InputBuffer": "0x0",
+                "UserBuffer": "0x0",
+                "InputBufferLength": "0x0",
+                "OutputBufferLength": "0x0"
+            },
+            "others": {
+                "read from": "<BV64 SystemBuffer_11_64>"
+            }
+        },
+        {
+            "title": "null pointer dereference - input buffer",
+            "description": "read input buffer",
+            "state": "<SimState @ 0x1149f>",
+            "parameters": {},
+            "eval": {
+                "IoControlCode": "0x9c402088",
+                "SystemBuffer": "0x0",
+                "Type3InputBuffer": "0x0",
+                "UserBuffer": "0x0",
+                "InputBufferLength": "0x0",
+                "OutputBufferLength": "0x0"
+            },
+            "others": {
+                "read from": "<BV64 SystemBuffer_11_64 + 0x4>"
+            }
+        },
+        {
+            "title": "arbitrary wrmsr",
+            "description": "",
+            "state": "<SimState @ 0x114ac>",
+            "parameters": {
+                "Register": "<BV32 *<BV64 SystemBuffer_11_64>_77_4096[31:0]>",
+                "Value": [
+                    "<BV32 *<BV64 SystemBuffer_11_64>_77_4096[95:64]>",
+                    "<BV32 *<BV64 SystemBuffer_11_64>_77_4096[63:32]>"
+                ]
+            },
+            "eval": {
+                "IoControlCode": "0x9c402088",
+                "SystemBuffer": "0x44650000",
+                "Type3InputBuffer": "0x0",
+                "UserBuffer": "0x0",
+                "InputBufferLength": "0x0",
+                "OutputBufferLength": "0x0"
+            },
+            "others": {}
+        },
+        {
+            "title": "null pointer dereference - input buffer",
+            "description": "write input buffer",
+            "state": "<SimState @ 0x1122f>",
+            "parameters": {},
+            "eval": {
+                "IoControlCode": "0x9c402000",
+                "SystemBuffer": "0x0",
+                "Type3InputBuffer": "0x0",
+                "UserBuffer": "0x0",
+                "InputBufferLength": "0x0",
+                "OutputBufferLength": "0x0"
+            },
+            "others": {
+                "write to": "<BV64 SystemBuffer_11_64>"
+            }
+        }
+    ],
+    "error": [
+        "<State errored with \"Cannot execute following jumpkind Ijk_SigTRAP\">"
+    ]
+}
