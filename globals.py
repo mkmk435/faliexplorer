@@ -1,30 +1,19 @@
 proj = None
+cc = None
+simgr = None
+FIRST_ADDR = 0x10000000
 cfg = None
 
-FIRST_ADDR = 0x444f0000
+controllable_buffers = ['SystemBuffer', 'Type3InputBuffer', 'UserBuffer']
+NPD_TARGETS = controllable_buffers
 
-mycc = None
-
-irp_addr = 0x696969
-irsp_addr = 0x420420
-
-simgr = None
-
-NPD_TARGETS = ['SystemBuffer', 'Type3InputBuffer', 'UserBuffer', 'ExAllocatePool_0x', 'ExAllocatePool2_0x', 'ExAllocatePool3_0x', 'ExAllocatePoolWithTag_0x', 'MmAllocateNonCachedMemory_0x', 'MmAllocateContiguousMemorySpecifyCache_0x']
-
-
-args = None
-
-vulns_unique = set()
-vulns_info = []
-
-
+irp_addr = 0x69696900
+irsp_addr = 0x67676700
 
 SystemBuffer = None
 Type3InputBuffer = None
 UserBuffer = None
-InputBufferLength = None
-OutputBufferLength = None
-IoControlCode = None
 
-basic_info = {}
+IoControlCode = None
+OutputBufferLength = None
+InputBufferLength = None

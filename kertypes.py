@@ -1,4 +1,5 @@
 import angr
+from angr import types as angr_types
 
 
 ALL_TYPES_STRING = '''

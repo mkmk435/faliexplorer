@@ -3,11 +3,11 @@
         "path": "driver_dataset/dataset/WinRing0.sys",
         "time": {
             "ioctl handler": 0,
-            "hunting vulns": 6
+            "hunting vulns": 10
         },
         "memory": {
-            "ioctl handler": 20736,
-            "hunting vulns": 304264
+            "ioctl handler": 22784,
+            "hunting vulns": 312980
         },
         "unique addr": {
             "ioctl handler": 59,
@@ -56,7 +56,7 @@
                 "Type3InputBuffer": "0x0",
                 "UserBuffer": "0x0",
                 "InputBufferLength": "0x10",
-                "OutputBufferLength": "0x0"
+                "OutputBufferLength": "0xc0000000"
             },
             "others": {
                 "return address": "0x11565"
