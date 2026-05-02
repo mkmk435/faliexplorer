@@ -42,6 +42,7 @@ class HookZwMapViewOfSection(angr.SimProcedure):
             # Se handle ereditato da ZwOpenSection, allora e' controllabile
             if any('ZwOpenSection' not in v for v in SectionHandle.variables):
                 utils.print_vuln('map physical memory', 'ZwMapViewOfSection - SectionHandle controllable', self.state, {'SectionHandle': str(SectionHandle), 'ProcessHandle': str(ProcessHandle), 'BaseAddress': str(BaseAddress), 'CommitSize': str(CommitSize), 'ViewSize': str(ViewSize)}, {'return address': ret_addr})
+            # altrimento controllo se handle e' memoria fisica o sconosciuto
             else:
                 handles = dict(self.state.globals['open_section_handles'])
                 if SectionHandle not in handles:

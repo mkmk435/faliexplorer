@@ -73,6 +73,7 @@ def b_mem_write(state):
         for target in globals.NPD_TARGETS:
             if target in str(state.inspect.mem_write_address):
                 asts = [i for i in state.inspect.mem_write_address.children_asts()]
+                # indirizzo base del buffer, preso dalla espressione
                 target_base = asts[0] if len(asts) > 1 else state.inspect.mem_write_address
                 vars = state.inspect.mem_write_address.variables
 
@@ -80,12 +81,15 @@ def b_mem_write(state):
                 tainted_ProbeForWrite = state.globals.get('tainted_ProbeForWrite', set())
                 tainted_MmIsAddressValid = state.globals.get('tainted_MmIsAddressValid', set())
 
+                # controllo se indirizzo e' gia' tainted o controllabile
                 if str(target_base) not in tainted_ProbeForRead and str(target_base) not in tainted_ProbeForWrite and len(vars) == 1:
                     # Add constraints to test whether the pointer is null or not.
                     tmp_state = state.copy()
+                    
                     if target == 'SystemBuffer':
+                        # check se si sta accedendo a qualcosa dereferenziato da system buffer
                         if '*' in str(state.inspect.mem_write_address):
-                            # If SystemBuffer is a pointer, check whether it is controllable.
+                            # se scrivibile (controllo con semplice constraint a 0x87 se valida)
                             tmp_state.solver.add(tmp_state.inspect.mem_write_address == 0x87)
                             if tmp_state.satisfiable():
                                 utils.print_vuln('read/write controllable address', 'write', state, {}, {'write to': str(state.inspect.mem_write_address)})
@@ -113,7 +117,7 @@ def b_mem_write(state):
                         if tmp_state.satisfiable():
                             utils.print_vuln('null pointer dereference - allocated memory', 'write allocated memory', state, {}, {'write to': str(state.inspect.mem_write_address)})
                     
-                # We symbolize the address of the tainted buffer because we want to detect the vulnerability when the driver reads/writes to/from the buffer.
+# We symbolize the address of the tainted buffer because we want to detect the vulnerability when the driver reads/writes to/from the buffer.
                 if utils.tainted_buffer(target_base) and str(target_base) not in state.globals:
                     tmp_state = state.copy()
                     tmp_state.solver.add(target_base == globals.FIRST_ADDR)
