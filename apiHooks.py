@@ -87,6 +87,48 @@ class HookMmMapIoSpaceEx(angr.SimProcedure):
             utils.print_vuln('map physical memory', 'MmMapIoSpaceEx - NumberOfBytes controllable', self.state, {'PhysicalAddress': str(PhysicalAddress), 'NumberOfBytes': str(NumberOfBytes), 'Protect': str(Protect)})
 
 
+# NTSTATUS PsLookupProcessByProcessId(
+#   [in]  HANDLE    ProcessId,
+#   [out] PEPROCESS *Process
+# );
+class HookPsLookupProcessByProcessId(angr.SimProcedure):
+    def run(self, ProcessId, Process):
+        if utils.tainted_buffer(ProcessId):
+            utils.print_vuln('lookup process', 'PsLookupProcessByProcessId - ProcessId tainted', self.state, {'ProcessId': str(ProcessId), 'Process': str(Process)}, {'return address': hex(self.state.callstack.ret_addr)})
+        ret_addr = hex(self.state.callstack.ret_addr)
+        eprocess_bvs = claripy.BVS(f'PsLookupProcessByProcessId_{ret_addr}', self.state.arch.bits)
+        self.state.memory.store(Process, eprocess_bvs, self.state.arch.bytes, endness=self.state.arch.memory_endness, disable_actions=True, inspect=False)
+        self.state.globals['tainted_eprocess'] += (str(eprocess_bvs), )
+
+        return 0
+            
+
+# NTSTATUS ObOpenObjectByPointer(
+#   [in]           PVOID           Object,
+#   [in]           ULONG           HandleAttributes,
+#   [in, optional] PACCESS_STATE   PassedAccessState,
+#   [in]           ACCESS_MASK     DesiredAccess,
+#   [in, optional] POBJECT_TYPE    ObjectType,
+#   [in]           KPROCESSOR_MODE AccessMode,
+#   [out]          PHANDLE         Handle
+# );
+# controlla se oggetto e' stato simbolizzato e tainted, e simbolizza handle come bvs
+class HookObOpenObjectByPointer(angr.SimProcedure):
+    def run(self, Object, HandleAttributes, PassedAccessState, DesiredAccess, ObjectType, AccessMode, Handle):
+        if globals.phase == 2:
+
+            ret_addr = hex(self.state.callstack.ret_addr)
+            handle_bvs = claripy.BVS(f'ObOpenObjectByPointer_{ret_addr}', self.state.arch.bits)
+            self.state.memory.store(Handle, handle_bvs, self.state.arch.bytes, endness=self.state.arch.memory_endness, disable_actions=True, inspect=False)
+            
+            # HandleAttributes is not OBJ_FORCE_ACCESS_CHECK.
+            tmp_state = self.state.copy()
+            tmp_state.solver.add(HandleAttributes & 1024 == 0)
+            if tmp_state.satisfiable() and (utils.tainted_buffer(Object) or (str(Object) in self.state.globals['tainted_eprocess'])):
+                utils.print_vuln('open object', 'ObOpenObjectByPointer - Object controllable', self.state, {'Object': str(Object), 'HandleAttributes': str(HandleAttributes), 'PassedAccessState': str(PassedAccessState), 'DesiredAccess': str(DesiredAccess), 'ObjectType': str(ObjectType), 'AccessMode': str(AccessMode), 'Handle': str(Handle)}, {'return address': hex(self.state.callstack.ret_addr)})
+                self.state.globals['tainted_handles'] += (str(handle_bvs), )
+        return 0
+
 # NTSYSAPI NTSTATUS ZwTerminateProcess(
 #   [in, optional] HANDLE   ProcessHandle,
 #   [in]           NTSTATUS ExitStatus
@@ -94,9 +136,10 @@ class HookMmMapIoSpaceEx(angr.SimProcedure):
 class HookZwTerminateProcess(angr.SimProcedure):
     def run(self, ProcessHandle, ExitStatus):
         # Controllo se il processHandle di ZwTerminateProcess e' controllabile
-
-        if utils.tainted_buffer(ProcessHandle):
-            utils.print_vuln('terminate process', 'ZwTerminateProcess - ProcessHandle controllable', self.state, {'ProcessHandle': str(ProcessHandle), 'ExitStatus': str(ExitStatus)})
+        print("dentro hook ZwTerminatProcess")
+        print(ProcessHandle, ExitStatus)
+        if str(ProcessHandle) in self.state.globals['tainted_handles']:
+            utils.print_vuln('terminate process', 'ZwTerminateProcess - ProcessHandle controllable', self.state, {'ProcessHandle': str(ProcessHandle), 'ExitStatus': str(ExitStatus)}, {'return address': hex(self.state.callstack.ret_addr)})
 # Alloca dest str e ci copia la source String.
 # Se la sourse string e' tainted e simbolica, la aggiunge alla lista di stringhe tainted
 # altrimenti semplicemente la copia

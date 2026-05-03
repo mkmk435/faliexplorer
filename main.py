@@ -30,6 +30,14 @@ def find_vulns(driver_path, ioctl_handler_addr, ioctl_handler_state):
 
     # ioctl_handler_state.globals['open_section_handles'] = ()
 
+    ioctl_handler_state.globals['tainted_ProbeForRead'] = ()
+    ioctl_handler_state.globals['tainted_ProbeForWrite'] = ()
+    ioctl_handler_state.globals['tainted_MmIsAddressValid'] = ()
+    ioctl_handler_state.globals['tainted_eprocess'] = ()
+    ioctl_handler_state.globals['tainted_handles'] = ()
+    ioctl_handler_state.globals['tainted_objects'] = ()
+    ioctl_handler_state.globals['tainted_process_context_changing'] = ()
+
     state = globals.proj.factory.call_state(
         ioctl_handler_addr,
         device_object_addr,
@@ -120,6 +128,9 @@ def hookDriver(driver_path):
     globals.proj.hook_symbol('RtlInitUnicodeString', apiHooks.HookRtlInitUnicodeString(cc=globals.cc))
     globals.proj.hook_symbol('HalTranslateBusAddress', apiHooks.HookHalTranslateBusAddress(cc=globals.cc))
     globals.proj.hook_symbol('IoStartPacket', apiHooks.HookIoStartPacket(cc=globals.cc))
+    globals.proj.hook_symbol('PsLookupProcessByProcessId', apiHooks.HookPsLookupProcessByProcessId(cc=globals.cc))
+    globals.proj.hook_symbol('ObOpenObjectByPointer', apiHooks.HookObOpenObjectByPointer(cc=globals.cc))
+    
 
     globals.proj.hook_symbol('ZwMapViewOfSection', apiHooks.HookZwMapViewOfSection(cc=globals.cc))
     globals.proj.hook_symbol('MmMapIoSpace', apiHooks.HookMmMapIoSpace(cc=globals.cc))

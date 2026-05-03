@@ -1,0 +1,140 @@
+{
+    "basic": {
+        "path": "driver_dataset/dataset/echodriver.sys",
+        "time": {
+            "ioctl handler": 1,
+            "hunting vulns": 4
+        },
+        "memory": {
+            "ioctl handler": 57984,
+            "hunting vulns": 69632
+        },
+        "unique addr": {
+            "ioctl handler": 205,
+            "hunting vulns": 227
+        },
+        "DeviceName": [
+            "\\Device\\EchoDriver"
+        ],
+        "SymbolicLink": [
+            "\\DosDevices\\EchoDriver"
+        ],
+        "ioctl handler": "0x140001250",
+        "IoControlCodes": [
+            "0x221c08",
+            "0x221c10",
+            "0x221c0c",
+            "0x221c04"
+        ]
+    },
+    "vuln": [
+        {
+            "title": "null pointer dereference - input buffer",
+            "description": "read input buffer",
+            "state": "<SimState @ 0x14000131c>",
+            "parameters": {},
+            "eval": {
+                "IoControlCode": "0x221c08",
+                "SystemBuffer": "0x0",
+                "Type3InputBuffer": "0x0",
+                "UserBuffer": "0x0",
+                "InputBufferLength": "0x0",
+                "OutputBufferLength": "0x0"
+            },
+            "others": {
+                "read from": "<BV64 SystemBuffer_26_64 + 0x4>"
+            }
+        },
+        {
+            "title": "null pointer dereference - input buffer",
+            "description": "read input buffer",
+            "state": "<SimState @ 0x14000143c>",
+            "parameters": {},
+            "eval": {
+                "IoControlCode": "0x221c10",
+                "SystemBuffer": "0x0",
+                "Type3InputBuffer": "0x0",
+                "UserBuffer": "0x0",
+                "InputBufferLength": "0x0",
+                "OutputBufferLength": "0x0"
+            },
+            "others": {
+                "read from": "<BV64 SystemBuffer_26_64>"
+            }
+        },
+        {
+            "title": "null pointer dereference - input buffer",
+            "description": "read input buffer",
+            "state": "<SimState @ 0x140001421>",
+            "parameters": {},
+            "eval": {
+                "IoControlCode": "0x221c0c",
+                "SystemBuffer": "0x0",
+                "Type3InputBuffer": "0x0",
+                "UserBuffer": "0x0",
+                "InputBufferLength": "0x0",
+                "OutputBufferLength": "0x0"
+            },
+            "others": {
+                "read from": "<BV64 SystemBuffer_26_64>"
+            }
+        },
+        {
+            "title": "null pointer dereference - input buffer",
+            "description": "read input buffer",
+            "state": "<SimState @ 0x140001280>",
+            "parameters": {},
+            "eval": {
+                "IoControlCode": "0x221c04",
+                "SystemBuffer": "0x0",
+                "Type3InputBuffer": "0x0",
+                "UserBuffer": "0x0",
+                "InputBufferLength": "0x0",
+                "OutputBufferLength": "0x0"
+            },
+            "others": {
+                "read from": "<BV64 SystemBuffer_26_64>"
+            }
+        },
+        {
+            "title": "controllable process handle",
+            "description": "ObOpenObjectByPointer - Object controllable",
+            "state": "<SimState @ 0x1401000b0>",
+            "parameters": {
+                "Object": "<BV64 PsLookupProcessByProcessId_0x1400015ae_55_64>",
+                "Handle": "<BV64 0x7fffffffffefef0>"
+            },
+            "eval": {
+                "IoControlCode": "0x221c04",
+                "SystemBuffer": "0x445a0000",
+                "Type3InputBuffer": "0x0",
+                "UserBuffer": "0x0",
+                "InputBufferLength": "0x0",
+                "OutputBufferLength": "0x0"
+            },
+            "others": {
+                "return address": "0x1400015e6"
+            }
+        },
+        {
+            "title": "arbitrary process termination",
+            "description": "ZwTerminateProcess - handle controllable",
+            "state": "<SimState @ 0x140100098>",
+            "parameters": {
+                "ProcessHandle": "<BV64 ObOpenObjectByPointer_0x1400015e6_57_64>"
+            },
+            "eval": {
+                "IoControlCode": "0x221c04",
+                "SystemBuffer": "0x445a0000",
+                "Type3InputBuffer": "0x0",
+                "UserBuffer": "0x0",
+                "InputBufferLength": "0x0",
+                "OutputBufferLength": "0x0"
+            },
+            "others": {
+                "return address": "0x1400015f7"
+            }
+        }
+    ],
+    "error": []
+}

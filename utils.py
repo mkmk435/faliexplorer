@@ -146,7 +146,7 @@ def find_ioctl_handler(driver_path):
 
     state.inspect.b('mem_write', mem_write_address=driver_object_addr + (0xe0 if globals.proj.arch.name == archinfo.ArchAMD64.name else 0x70), when=angr.BP_AFTER, action=b_write_ioctl_handler)
     state.inspect.b('mem_write', mem_write_address=driver_object_addr + (0x60 if globals.proj.arch.name == archinfo.ArchAMD64.name else 0x30), when=angr.BP_AFTER, action=b_mem_write_DriverStartIo)
-    state.inspect.b('call', when=angr.BP_BEFORE, action=memHooks.b_call)
+    # state.inspect.b('call', when=angr.BP_BEFORE, action=memHooks.b_call)
 
     globals.simgr = globals.proj.factory.simgr(state)
     globals.simgr.use_technique(angr.exploration_techniques.DFS())
