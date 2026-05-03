@@ -19,8 +19,24 @@ def hook_dangerous_asm(driver_path):
         if instr.mnemonic == 'wrmsr':
             utils.print_debug(f'wrmsr at: {instr.address}')
             globals.proj.hook(instr.address, ophooks.wrmsr_hook, instr.size)
-        # elif instr.mnemonic == 'rdmsr':
-        #     utils.print_debug(f'rdmsr at: {instr.address}')
+        elif instr.mnemonic == 'rdmsr':
+            utils.print_debug(f'rdmsr at: {instr.address}')
+            globals.proj.hook(instr.address, ophooks.rdmsr_hook, instr.size)
+
+        elif instr.mnemonic == 'out':
+            utils.print_debug(f'out at: {instr.address}')
+            globals.proj.hook(instr.address, ophooks.out_hook, instr.size)
+        elif instr.mnemonic == 'outsb':
+            utils.print_debug(f'outsb at: {instr.address}')
+            globals.proj.hook(instr.address, ophooks.outs_hook, instr.size)
+        elif instr.mnemonic == 'outsw':
+            utils.print_debug(f'outsw at: {instr.address}')
+            globals.proj.hook(instr.address, ophooks.outs_hook, instr.size)
+        elif instr.mnemonic == 'outsd':
+            utils.print_debug(f'outsd at: {instr.address}')
+            globals.proj.hook(instr.address, ophooks.outs_hook, instr.size)
+
+
 
 def find_vulns(driver_path, ioctl_handler_addr, ioctl_handler_state):
 
