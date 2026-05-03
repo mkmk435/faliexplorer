@@ -5,7 +5,19 @@ import globals
 
 
 
+# NTSTATUS IoCreateSymbolicLink(
+#   [in] PUNICODE_STRING SymbolicLinkName,
+#   [in] PUNICODE_STRING DeviceName
+# );
+# printa e basta il symbolic link name e il device namex``
+class HookIoCreateSymbolicLink(angr.SimProcedure):
+    def run(self, SymbolicLinkName, DeviceName):
 
+        device_name = utils.read_buffer_from_unicode_string(self.state, DeviceName)
+        print("device_name: ", device_name)
+        symbolic_link_name = utils.read_buffer_from_unicode_string(self.state, SymbolicLinkName)
+        print("symbolic_link_name: ", symbolic_link_name)
+        return 0
 
 # NTSYSAPI NTSTATUS ZwOpenSection(
 #   [out] PHANDLE            SectionHandle,   (ptr)
@@ -136,10 +148,10 @@ class HookObOpenObjectByPointer(angr.SimProcedure):
 class HookZwTerminateProcess(angr.SimProcedure):
     def run(self, ProcessHandle, ExitStatus):
         # Controllo se il processHandle di ZwTerminateProcess e' controllabile
-        print("dentro hook ZwTerminatProcess")
-        print(ProcessHandle, ExitStatus)
         if str(ProcessHandle) in self.state.globals['tainted_handles']:
             utils.print_vuln('terminate process', 'ZwTerminateProcess - ProcessHandle controllable', self.state, {'ProcessHandle': str(ProcessHandle), 'ExitStatus': str(ExitStatus)}, {'return address': hex(self.state.callstack.ret_addr)})
+
+
 # Alloca dest str e ci copia la source String.
 # Se la sourse string e' tainted e simbolica, la aggiunge alla lista di stringhe tainted
 # altrimenti semplicemente la copia

@@ -130,7 +130,7 @@ def hookDriver(driver_path):
     globals.proj.hook_symbol('IoStartPacket', apiHooks.HookIoStartPacket(cc=globals.cc))
     globals.proj.hook_symbol('PsLookupProcessByProcessId', apiHooks.HookPsLookupProcessByProcessId(cc=globals.cc))
     globals.proj.hook_symbol('ObOpenObjectByPointer', apiHooks.HookObOpenObjectByPointer(cc=globals.cc))
-    
+    globals.proj.hook_symbol('IoCreateSymbolicLink', apiHooks.HookIoCreateSymbolicLink(cc=globals.cc))
 
     globals.proj.hook_symbol('ZwMapViewOfSection', apiHooks.HookZwMapViewOfSection(cc=globals.cc))
     globals.proj.hook_symbol('MmMapIoSpace', apiHooks.HookMmMapIoSpace(cc=globals.cc))
