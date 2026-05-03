@@ -4,6 +4,9 @@ import utils
 import globals
 
 
+
+
+
 # NTSYSAPI NTSTATUS ZwOpenSection(
 #   [out] PHANDLE            SectionHandle,   (ptr)
 #   [in]  ACCESS_MASK        DesiredAccess,
@@ -52,6 +55,48 @@ class HookZwMapViewOfSection(angr.SimProcedure):
         return 0
 
 
+# PVOID MmMapIoSpace(
+#   [in] PHYSICAL_ADDRESS    PhysicalAddress,
+#   [in] SIZE_T              NumberOfBytes,
+#   [in] MEMORY_CACHING_TYPE CacheType
+# );
+class HookMmMapIoSpace(angr.SimProcedure):
+    def run(self, PhysicalAddress, NumberOfBytes, CacheType):
+        # Controllo se i parametri di MmMapIoSpace sono controllabili uno per uno
+        if utils.tainted_buffer(PhysicalAddress) and utils.tainted_buffer(NumberOfBytes):
+            utils.print_vuln('map physical memory', 'MmMapIoSpace - PhysicalAddress and NumberOfBytes controllable', self.state, {'PhysicalAddress': str(PhysicalAddress), 'NumberOfBytes': str(NumberOfBytes), 'CacheType': str(CacheType)}, {'return address': hex(self.state.callstack.ret_addr)})
+        elif utils.tainted_buffer(PhysicalAddress):
+            utils.print_vuln('map physical memory', 'MmMapIoSpace - PhysicalAddress controllable', self.state, {'PhysicalAddress': str(PhysicalAddress), 'NumberOfBytes': str(NumberOfBytes), 'CacheType': str(CacheType)}, {'return address': hex(self.state.callstack.ret_addr)})
+        elif utils.tainted_buffer(NumberOfBytes):
+            utils.print_vuln('map physical memory', 'MmMapIoSpace - NumberOfBytes controllable', self.state, {'PhysicalAddress': str(PhysicalAddress), 'NumberOfBytes': str(NumberOfBytes), 'CacheType': str(CacheType)}, {'return address': hex(self.state.callstack.ret_addr)})
+        return 0
+
+# PVOID MmMapIoSpaceEx(
+#   [in] PHYSICAL_ADDRESS PhysicalAddress,
+#   [in] SIZE_T           NumberOfBytes,
+#   [in] ULONG            Protect
+# );
+class HookMmMapIoSpaceEx(angr.SimProcedure):
+    def run(self, PhysicalAddress, NumberOfBytes, Protect):
+        # Controllo se i parametri di MmMapIoSpaceEx sono controllabili uno per uno
+        if utils.tainted_buffer(PhysicalAddress) and utils.tainted_buffer(NumberOfBytes):
+            utils.print_vuln('map physical memory', 'MmMapIoSpaceEx - PhysicalAddress and NumberOfBytes controllable', self.state, {'PhysicalAddress': str(PhysicalAddress), 'NumberOfBytes': str(NumberOfBytes), 'Protect': str(Protect)})
+        elif utils.tainted_buffer(PhysicalAddress):
+            utils.print_vuln('map physical memory', 'MmMapIoSpaceEx - PhysicalAddress controllable', self.state, {'PhysicalAddress': str(PhysicalAddress), 'NumberOfBytes': str(NumberOfBytes), 'Protect': str(Protect)})
+        elif utils.tainted_buffer(NumberOfBytes):
+            utils.print_vuln('map physical memory', 'MmMapIoSpaceEx - NumberOfBytes controllable', self.state, {'PhysicalAddress': str(PhysicalAddress), 'NumberOfBytes': str(NumberOfBytes), 'Protect': str(Protect)})
+
+
+# NTSYSAPI NTSTATUS ZwTerminateProcess(
+#   [in, optional] HANDLE   ProcessHandle,
+#   [in]           NTSTATUS ExitStatus
+# );
+class HookZwTerminateProcess(angr.SimProcedure):
+    def run(self, ProcessHandle, ExitStatus):
+        # Controllo se il processHandle di ZwTerminateProcess e' controllabile
+
+        if utils.tainted_buffer(ProcessHandle):
+            utils.print_vuln('terminate process', 'ZwTerminateProcess - ProcessHandle controllable', self.state, {'ProcessHandle': str(ProcessHandle), 'ExitStatus': str(ExitStatus)})
 # Alloca dest str e ci copia la source String.
 # Se la sourse string e' tainted e simbolica, la aggiunge alla lista di stringhe tainted
 # altrimenti semplicemente la copia
@@ -90,3 +135,49 @@ class HookRtlInitUnicodeString(angr.SimProcedure):
         # check se la source string e' tainted e simbolica
         if (not SourceString.symbolic and utils.tainted_buffer(self.state.memory.load(SourceString, 0x10, disable_actions=True, inspect=False))) or utils.tainted_buffer(SourceString) or str(SourceString) in self.state.globals['tainted_unicode_strings']:
             self.state.globals['tainted_unicode_strings'] += (str(unistr.Buffer.resolved), )
+
+
+# Scrivi in translated address il valore di BusNumber + BusAddress 
+# Serve perche' per 'propagare' il valore di BusNumber e BusAddress al di fuori della funzione, 
+# Es. serve per la funzione MmMapIoSpace per controllare se il buffer e' controllabile
+class HookHalTranslateBusAddress(angr.SimProcedure):
+    def run(self, InterfaceType, BusNumber, BusAddress, AddressSpace, TranslatedAddress):
+        self.state.memory.store(TranslatedAddress, BusNumber + BusAddress, self.state.arch.bytes, endness=self.state.arch.memory_endness, disable_actions=True, inspect=False)
+        return 1
+
+
+class HookIoStartPacket(angr.SimProcedure):
+    # Call DriverStartIo when IoStartPacket is called.
+    def run(self, DeviceObject, Irp, Key, CancelFunction):
+        if globals.DriverStartIo:
+            new_state = self.state.project.factory.call_state(addr=globals.DriverStartIo, args=(DeviceObject, Irp), base_state=self.state)
+            globals.simgr.deferred.append(new_state)
+
+
+#PVOID ExAllocatePoolWithTag(
+#   [in] __drv_strictTypeMatch(__drv_typeExpr)POOL_TYPE PoolType,
+#   [in] SIZE_T                                         NumberOfBytes,
+#   [in] ULONG                                          Tag
+# );
+# L'hook controlla se possiamo controllare il numero di bytes allocati
+# inoltre crea un sym value del puntatore allocato, cosi' da vedere se in futur potremo controllarlo
+class HookExAllocatePoolWithTag(angr.SimProcedure):
+    def run(self, PoolType, NumberOfBytes, Tag):
+        if globals.phase == 2:
+            if utils.tainted_buffer(NumberOfBytes):
+                utils.print_vuln('allocate pool', 'ExAllocatePoolWithTag - NumberOfBytes controllable', self.state, {'PoolType': str(PoolType), 'NumberOfBytes': str(NumberOfBytes), 'Tag': str(Tag)})
+
+            ret_addr = hex(self.state.callstack.ret_addr)
+            allocated_ptr = claripy.BVS(f'ExAllocatePoolWithTag_{ret_addr}', self.state.arch.bits)
+            return allocated_ptr    
+        else:
+            return utils.next_base_addr()
+
+
+
+# Per ora semplice hook che esegue la funzione memcpy originale
+class HookMemcpy(angr.SimProcedure):
+    def run(self, dest, src, size):
+        angr.procedures.SIM_PROCEDURES['libc']['memcpy'](cc=self.cc).execute(self.state, arguments=(dest, src, size))
+
+        return 0

@@ -131,3 +131,20 @@ def b_mem_write(state):
                     state.memory.store(addr, mem, 0x200, disable_actions=True, inspect=False)
     except Exception:
         pass
+
+
+def b_call(state):
+    ret_addr = state.solver.eval(state.memory.load(state.regs.rsp, state.arch.bytes, endness=state.arch.memory_endness))
+    # utils.print_debug(f'call: state: {state}, ret_addr: {hex(ret_addr)}, function addr: {state.inspect.function_address})')
+
+    # Check if the function address to call is tainted.
+    if utils.tainted_buffer(state.inspect.function_address):
+        state.regs.rip = 0x1337
+        # utils.print_vuln('arbitrary shellcode execution', '', state, {}, {'function address': str(state.inspect.function_address), 'return address': hex(ret_addr)})
+        
+    # If the number of function address evaluated is more than 1, skip the call.
+    if len(state.solver.eval_upto(state.inspect.function_address, 2)) > 1:
+        tmp_state = state.copy()
+        tmp_state.regs.rip = globals.DO_NOTHING
+        globals.simgr.deferred.append(tmp_state)
+        return angr.SIM_PROCEDURES['stubs']['ReturnUnconstrained']().execute(state)

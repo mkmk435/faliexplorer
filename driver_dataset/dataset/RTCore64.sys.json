@@ -3,11 +3,11 @@
         "path": "driver_dataset/dataset/RTCore64.sys",
         "time": {
             "ioctl handler": 0,
-            "hunting vulns": 25
+            "hunting vulns": 27
         },
         "memory": {
             "ioctl handler": 2304,
-            "hunting vulns": 499356
+            "hunting vulns": 479860
         },
         "unique addr": {
             "ioctl handler": 38,
@@ -23,8 +23,8 @@
         "IoControlCodes": [
             "0x8000204c",
             "0x80002010",
-            "0x80002014",
             "0x80002004",
+            "0x80002014",
             "0x80002034",
             "0x80002048",
             "0x80002030",
@@ -170,8 +170,8 @@
             "description": "",
             "state": "<SimState @ 0x117a0>",
             "parameters": {
-                "Port": "<BV16 *<BV64 SystemBuffer_41_64>_98_4096[15:0]>",
-                "Data": "<BV8 *<BV64 SystemBuffer_41_64>_98_4096[39:32]>"
+                "Port": "<BV16 *<BV64 SystemBuffer_41_64>_99_4096[15:0]>",
+                "Data": "<BV8 *<BV64 SystemBuffer_41_64>_99_4096[39:32]>"
             },
             "eval": {
                 "IoControlCode": "0x8000201c",
@@ -205,10 +205,10 @@
             "description": "ZwMapViewOfSection - map \\Device\\PhysicalMemory",
             "state": "<SimState @ 0x100000>",
             "parameters": {
-                "SectionHandle": "<BV64 ZwOpenSection_0x111ef_152_64>",
+                "SectionHandle": "<BV64 ZwOpenSection_0x111ef_153_64>",
                 "ProcessHandle": "<BV64 0xffffffffffffffff>",
                 "BaseAddress": "<BV64 0x7fffffffffefec8>",
-                "CommitSize": "<BV64 0x0 .. *<BV64 SystemBuffer_41_64>_151_4096[95:64]>",
+                "CommitSize": "<BV64 0x0 .. *<BV64 SystemBuffer_41_64>_152_4096[95:64]>",
                 "ViewSize": "<BV64 0x7fffffffffefee0>"
             },
             "eval": {
@@ -228,8 +228,8 @@
             "description": "MmMapIoSpace - PhysicalAddress and NumberOfBytes controllable",
             "state": "<SimState @ 0x100018>",
             "parameters": {
-                "PhysicalAddress": "<BV64 *<BV64 SystemBuffer_41_64>_170_4096[63:0]>",
-                "NumberOfBytes": "<BV64 0x0 .. *<BV64 SystemBuffer_41_64>_170_4096[159:128]>"
+                "PhysicalAddress": "<BV64 *<BV64 SystemBuffer_41_64>_171_4096[63:0]>",
+                "NumberOfBytes": "<BV64 0x0 .. *<BV64 SystemBuffer_41_64>_171_4096[159:128]>"
             },
             "eval": {
                 "IoControlCode": "0x80002040",

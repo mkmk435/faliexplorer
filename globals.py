@@ -1,8 +1,12 @@
 proj = None
 cc = None
 simgr = None
-FIRST_ADDR = 0x10000000
+FIRST_ADDR = 0x444f0000
 cfg = None
+
+ioctl_handler = 0
+DriverStartIo = 0
+phase = 1
 
 controllable_buffers = ['SystemBuffer', 'Type3InputBuffer', 'UserBuffer']
 NPD_TARGETS = controllable_buffers
@@ -17,3 +21,5 @@ UserBuffer = None
 IoControlCode = None
 OutputBufferLength = None
 InputBufferLength = None
+
+basic_info = {}

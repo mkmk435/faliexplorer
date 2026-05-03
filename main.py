@@ -24,6 +24,7 @@ def hook_dangerous_asm(driver_path):
 
 def find_vulns(driver_path, ioctl_handler_addr, ioctl_handler_state):
 
+    globals.phase = 2
     irp = claripy.BVS('irp_buf', 8 * 0x200)
     device_object_addr = claripy.BVS('device_object_addr', ioctl_handler_state.arch.bits)
 
@@ -85,6 +86,7 @@ def find_vulns(driver_path, ioctl_handler_addr, ioctl_handler_state):
     globals.simgr.populate('found', [])    
     globals.simgr.use_technique(angr.exploration_techniques.DFS())
     
+    
     while (len(globals.simgr.active) > 0 or len(globals.simgr.deferred) > 0):# and not ed.state_exploded_bool:
         try:
             globals.simgr.step(num_inst=1)
@@ -101,15 +103,33 @@ def find_vulns(driver_path, ioctl_handler_addr, ioctl_handler_state):
             # utils.print_error(f'{repr(s)}')
             print(f'{repr(s)}')
 
-def hookDriver(driver_path, ioctl_handler_addr, ioctl_handler_state):
+def hookDriver(driver_path):
+
     globals.cfg = globals.proj.analyses.CFGFast()
 
     hook_dangerous_asm(driver_path)
 
+    #hook di memcpy e memset, non sono importate nel win kernel e sono lentissime
+    #necessario per se vengono usate
+    utils.find_hook_func()
+
+
+    globals.proj.hook_symbol('memmove', apiHooks.HookMemcpy(cc=globals.cc))
+    globals.proj.hook_symbol('memcpy', apiHooks.HookMemcpy(cc=globals.cc))
     globals.proj.hook_symbol('ZwOpenSection', apiHooks.HookZwOpenSection(cc=globals.cc))
     globals.proj.hook_symbol('RtlInitUnicodeString', apiHooks.HookRtlInitUnicodeString(cc=globals.cc))
+    globals.proj.hook_symbol('HalTranslateBusAddress', apiHooks.HookHalTranslateBusAddress(cc=globals.cc))
+    globals.proj.hook_symbol('IoStartPacket', apiHooks.HookIoStartPacket(cc=globals.cc))
 
     globals.proj.hook_symbol('ZwMapViewOfSection', apiHooks.HookZwMapViewOfSection(cc=globals.cc))
+    globals.proj.hook_symbol('MmMapIoSpace', apiHooks.HookMmMapIoSpace(cc=globals.cc))
+    globals.proj.hook_symbol('MmMapIoSpaceEx', apiHooks.HookMmMapIoSpaceEx(cc=globals.cc))
+    globals.proj.hook_symbol('ZwTerminateProcess', apiHooks.HookZwTerminateProcess(cc=globals.cc))
+
+    globals.proj.hook_symbol("ExAllocatePoolWithTag", apiHooks.HookExAllocatePoolWithTag(cc=globals.cc))
+
+    ioctl_handler_addr, ioctl_handler_state = utils.find_ioctl_handler(driver_path)
+    print(f"IOCTL handler address: {hex(ioctl_handler_addr)}")
 
     find_vulns(driver_path, ioctl_handler_addr, ioctl_handler_state)
 
@@ -118,7 +138,12 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument('path', type=str, help='dir (including subdirectory) or file path to the driver(s) to analyze')
     parser.add_argument('-d', '--debug', default=False, action='store_true', help='print debug info while analyzing (default False)')
-
+    parser.add_argument('-T', '--total_timeout', type=int, default=1200, help='total timeout for the whole symbolic execution (default 1200, 0 to unlimited)')
+    parser.add_argument('-t', '--timeout', type=int, default=40, help='timeout for analyze each IoControlCode (default 40, 0 to unlimited)')
+    parser.add_argument('-r', '--recursion', default=False, action='store_true', help='do not kill state if detecting recursion (default False)')
+    parser.add_argument('-l', '--length', type=int, default=0, help='the limit of number of instructions for technique LengthLimiter (default 0, 0 to unlimited)')
+    parser.add_argument('-b', '--bound', type=int, default=0, help='the bound for technique LoopSeer (default 0, 0 to unlimited)')
+    
     globals.args = parser.parse_args()
 
     driver = globals.args.path
@@ -135,9 +160,7 @@ if __name__ == "__main__":
     else:
         globals.cc = angr.calling_conventions.SimCCMicrosoftAMD64(globals.proj.arch)
 
-    ioctl_handler_addr, ioctl_handler_state = utils.find_ioctl_handler(driver)
-    print(f"IOCTL handler address: {hex(ioctl_handler_addr)}")
     logging.getLogger('angr').setLevel(logging.ERROR)
 
-    hookDriver(driver, ioctl_handler_addr, ioctl_handler_state)
+    hookDriver(driver)
 
