@@ -36,6 +36,18 @@ def hook_dangerous_asm(driver_path):
             utils.print_debug(f'outsd at: {instr.address}')
             globals.proj.hook(instr.address, ophooks.outs_hook, instr.size)
 
+        elif instr.mnemonic == 'in':
+            utils.print_debug(f'in at: {instr.address}')
+            globals.proj.hook(instr.address, ophooks.in_hook, instr.size)
+        elif instr.mnemonic == 'insb':
+            utils.print_debug(f'insb at: {instr.address}')
+            globals.proj.hook(instr.address, ophooks.ins_hook, instr.size)
+        elif instr.mnemonic == 'insw':
+            utils.print_debug(f'insw at: {instr.address}')
+            globals.proj.hook(instr.address, ophooks.ins_hook, instr.size)
+        elif instr.mnemonic == 'insd':
+            utils.print_debug(f'insd at: {instr.address}')
+            globals.proj.hook(instr.address, ophooks.ins_hook, instr.size)
 
 
 def find_vulns(driver_path, ioctl_handler_addr, ioctl_handler_state):
