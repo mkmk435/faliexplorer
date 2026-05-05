@@ -9,7 +9,7 @@ import ophooks
 import kertypes
 import claripy
 import memHooks
-
+import techniques
 
 
 def hook_dangerous_asm(driver_path):
@@ -19,8 +19,35 @@ def hook_dangerous_asm(driver_path):
         if instr.mnemonic == 'wrmsr':
             utils.print_debug(f'wrmsr at: {instr.address}')
             globals.proj.hook(instr.address, ophooks.wrmsr_hook, instr.size)
-        # elif instr.mnemonic == 'rdmsr':
-        #     utils.print_debug(f'rdmsr at: {instr.address}')
+        elif instr.mnemonic == 'rdmsr':
+            utils.print_debug(f'rdmsr at: {instr.address}')
+            globals.proj.hook(instr.address, ophooks.rdmsr_hook, instr.size)
+
+        elif instr.mnemonic == 'out':
+            utils.print_debug(f'out at: {instr.address}')
+            globals.proj.hook(instr.address, ophooks.out_hook, instr.size)
+        elif instr.mnemonic == 'outsb':
+            utils.print_debug(f'outsb at: {instr.address}')
+            globals.proj.hook(instr.address, ophooks.outs_hook, instr.size)
+        elif instr.mnemonic == 'outsw':
+            utils.print_debug(f'outsw at: {instr.address}')
+            globals.proj.hook(instr.address, ophooks.outs_hook, instr.size)
+        elif instr.mnemonic == 'outsd':
+            utils.print_debug(f'outsd at: {instr.address}')
+            globals.proj.hook(instr.address, ophooks.outs_hook, instr.size)
+
+        elif instr.mnemonic == 'in':
+            utils.print_debug(f'in at: {instr.address}')
+            globals.proj.hook(instr.address, ophooks.in_hook, instr.size)
+        elif instr.mnemonic == 'insb':
+            utils.print_debug(f'insb at: {instr.address}')
+            globals.proj.hook(instr.address, ophooks.ins_hook, instr.size)
+        elif instr.mnemonic == 'insw':
+            utils.print_debug(f'insw at: {instr.address}')
+            globals.proj.hook(instr.address, ophooks.ins_hook, instr.size)
+        elif instr.mnemonic == 'insd':
+            utils.print_debug(f'insd at: {instr.address}')
+            globals.proj.hook(instr.address, ophooks.ins_hook, instr.size)
 
 def find_vulns(driver_path, ioctl_handler_addr, ioctl_handler_state):
 
@@ -37,6 +64,7 @@ def find_vulns(driver_path, ioctl_handler_addr, ioctl_handler_state):
     ioctl_handler_state.globals['tainted_handles'] = ()
     ioctl_handler_state.globals['tainted_objects'] = ()
     ioctl_handler_state.globals['tainted_process_context_changing'] = ()
+    # ioctl_handler_state.globals['tainted_translated_addresses'] = ()
 
     state = globals.proj.factory.call_state(
         ioctl_handler_addr,
@@ -60,7 +88,10 @@ def find_vulns(driver_path, ioctl_handler_addr, ioctl_handler_state):
 
     state.inspect.b('mem_read', when=angr.BP_BEFORE, action=memHooks.b_mem_read)
     state.inspect.b('mem_write', when=angr.BP_BEFORE, action=memHooks.b_mem_write)
-    # state.inspect.b('call', when=angr.BP_BEFORE, action=breakpoints.b_call)
+    # state.inspect.b('call', when=angr.BP_BEFORE, action=memHooks.b_call)
+    state.inspect.b('call', when=angr.BP_BEFORE, action=memHooks.inspect_args_hook)
+    #state.inspect.b('call', when=angr.BP_BEFORE, action=memHooks.universal_hook)
+
 
 
     state.memory.store(globals.irp_addr, irp)
@@ -88,14 +119,22 @@ def find_vulns(driver_path, ioctl_handler_addr, ioctl_handler_state):
     _params.DeviceIoControl.Type3InputBuffer = globals.Type3InputBuffer
 
     # Add check for custom ioctl codes
-    _params.DeviceIoControl.IoControlCode.val = globals.IoControlCode
+    if globals.args.ioctlcode:
+        _params.DeviceIoControl.IoControlCode.val = int(globals.args.ioctlcode, 16)
+        state.add_constraints(globals.IoControlCode == int(globals.args.ioctlcode, 16))
+    else:
+        _params.DeviceIoControl.IoControlCode.val = globals.IoControlCode
 
     globals.simgr = globals.proj.factory.simgr(state)
     globals.simgr.populate('found', [])    
     globals.simgr.use_technique(angr.exploration_techniques.DFS())
+
+    ed = techniques.ExplosionDetector(threshold=10000)
+    globals.simgr.use_technique(ed)
+
     
     
-    while (len(globals.simgr.active) > 0 or len(globals.simgr.deferred) > 0):# and not ed.state_exploded_bool:
+    while (len(globals.simgr.active) > 0 or len(globals.simgr.deferred) > 0) and not ed.state_exploded_bool:
         try:
             globals.simgr.step(num_inst=1)
             # globals.simgr.step()
@@ -114,8 +153,15 @@ def find_vulns(driver_path, ioctl_handler_addr, ioctl_handler_state):
 def hookDriver(driver_path):
 
     globals.cfg = globals.proj.analyses.CFGFast()
-
-    hook_dangerous_asm(driver_path)
+    # globals.cfg = globals.proj.analyses.CFGEmulated(keep_state=True)
+    globals.proj.analyses.CompleteCallingConventions(
+        recover_variables=True, 
+        cfg=globals.cfg,
+        analyze_callsites=True   # <-- helps with custom functions
+    )
+    # Run CompleteCallingConventionsAnalysis on all functions to recover prototypes
+    print("Analyzing calling conventions for all functions...")
+    globals.proj.analyses.CompleteCallingConventions(recover_variables=True, cfg=globals.cfg)
 
     #hook di memcpy e memset, non sono importate nel win kernel e sono lentissime
     #necessario per se vengono usate
@@ -131,6 +177,9 @@ def hookDriver(driver_path):
     globals.proj.hook_symbol('PsLookupProcessByProcessId', apiHooks.HookPsLookupProcessByProcessId(cc=globals.cc))
     globals.proj.hook_symbol('ObOpenObjectByPointer', apiHooks.HookObOpenObjectByPointer(cc=globals.cc))
     globals.proj.hook_symbol('IoCreateSymbolicLink', apiHooks.HookIoCreateSymbolicLink(cc=globals.cc))
+    
+    globals.proj.hook_symbol('ProbeForRead', apiHooks.HookProbeForRead(cc=globals.cc))
+    globals.proj.hook_symbol('ProbeForWrite', apiHooks.HookProbeForWrite(cc=globals.cc))
 
     globals.proj.hook_symbol('ZwMapViewOfSection', apiHooks.HookZwMapViewOfSection(cc=globals.cc))
     globals.proj.hook_symbol('MmMapIoSpace', apiHooks.HookMmMapIoSpace(cc=globals.cc))
@@ -154,7 +203,7 @@ if __name__ == "__main__":
     parser.add_argument('-r', '--recursion', default=False, action='store_true', help='do not kill state if detecting recursion (default False)')
     parser.add_argument('-l', '--length', type=int, default=0, help='the limit of number of instructions for technique LengthLimiter (default 0, 0 to unlimited)')
     parser.add_argument('-b', '--bound', type=int, default=0, help='the bound for technique LoopSeer (default 0, 0 to unlimited)')
-    
+    parser.add_argument('-i', '--ioctlcode', default=0, help='analyze specified IoControlCode (e.g. 22201c)')
     globals.args = parser.parse_args()
 
     driver = globals.args.path
@@ -162,7 +211,7 @@ if __name__ == "__main__":
     print(f"ANALYZING DRIVER: {driver}")
     instrs, text_instr = utils.disasm_file(driver)
 
-    globals.proj = angr.Project(driver, auto_load_libs=False)
+    globals.proj = angr.Project(driver, auto_load_libs=False,     main_opts={'os': 'windows'})
 
     
     # Customize calling convention for the SimProcs.

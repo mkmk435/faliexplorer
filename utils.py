@@ -9,6 +9,11 @@ import techniques
 import memHooks
 import apiHooks
 
+
+
+vuln_rips = []
+past_ioctls = []
+
 def next_base_addr(size=0x10000):
     v = globals.FIRST_ADDR
     globals.FIRST_ADDR += size
@@ -167,6 +172,7 @@ def find_ioctl_handler(driver_path):
     state.inspect.b('mem_write', mem_write_address=driver_object_addr + (0xe0 if globals.proj.arch.name == archinfo.ArchAMD64.name else 0x70), when=angr.BP_AFTER, action=b_write_ioctl_handler)
     state.inspect.b('mem_write', mem_write_address=driver_object_addr + (0x60 if globals.proj.arch.name == archinfo.ArchAMD64.name else 0x30), when=angr.BP_AFTER, action=b_mem_write_DriverStartIo)
     # state.inspect.b('call', when=angr.BP_BEFORE, action=memHooks.b_call)
+    # state.inspect.b('call', when=angr.BP_BEFORE, action=memHooks.universal_hook)
 
     globals.simgr = globals.proj.factory.simgr(state)
     globals.simgr.use_technique(angr.exploration_techniques.DFS())
@@ -228,11 +234,22 @@ def tainted_buffer(buffer):
     return ''
 
 def print_vuln(vuln_type, access_type, state, additional_info, address_info):
+    rip = state.solver.eval(state.regs.rip)
+    ioctl = state.solver.eval(globals.IoControlCode)
+    # if ioctl  in past_ioctls:
+    #     return
+    # past_ioctls.append(ioctl)
+    # if rip in vuln_rips:
+    #     return
+    # vuln_rips.append(rip)
     """Print vulnerability information."""
     print("____________________________________________________________")
     print(f"[VULN] {vuln_type} - {access_type}")
     print(f"  State: {state}")
-    print(f"IOCTL: {hex(state.solver.eval(globals.IoControlCode))}")
+    print(f"IOCTL: {hex(ioctl)  }")
+    print(f"RIP: {hex(rip)}")
+
+
     for key, value in additional_info.items():
         print(f"  {key}: {value}")
     for key, value in address_info.items():

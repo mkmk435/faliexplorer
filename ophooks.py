@@ -8,10 +8,6 @@ import claripy
 def wrmsr_hook(state):
     # Check if we can control the parameters of wrmsr.
 
-    # print(f"Dentro wrmsr hook, ioctl: {hex(state.solver.eval(globals.IoControlCode))}")
-
-    # print("Dentro wrmsr hook")
-
     # print("REGISTRI IN WRMSR Hook",state.regs.eax,state.regs.ecx,state.regs.edx)
     if utils.tainted_buffer(state.regs.eax) and utils.tainted_buffer(state.regs.ecx) and utils.tainted_buffer(state.regs.edx):
         # Check whether the regsiter is constrained.
@@ -23,4 +19,77 @@ def wrmsr_hook(state):
 
         if tmp_state.satisfiable():
             # utils.print_vuln('arbitrary wrmsr', '', state, {'Register': str(state.regs.ecx), 'Value': (str(state.regs.edx), str(state.regs.eax))}, {})    
-            utils.print_vuln('arbitrary wrmsr', '', state, {}, {})
+            utils.print_vuln('arbitrary wrmsr', '', state, {'Register': str(state.regs.ecx), 'Value': (str(state.regs.edx), str(state.regs.eax))}, {})
+
+#Read MSR specified by ECX into EDX:EAX.
+def rdmsr_hook(state):
+    # Check if we can control the parameters of rdmsr.
+    if utils.tainted_buffer(state.regs.ecx):
+        # Check whether the regsiter is constrained.
+        utils.print_vuln('RDMSR registers are tainted', '', state, {}, {})
+
+        tmp_state = state.copy()
+        # controlla se ecx e' scrivibile con alcuni registri msr utili 
+        tmp_state.solver.add(claripy.Or(tmp_state.regs.ecx == 0x00000174, tmp_state.regs.ecx == 0x00000175, tmp_state.regs.ecx == 0x00000176, tmp_state.regs.ecx == 0xC0000081, tmp_state.regs.ecx == 0xC0000082, tmp_state.regs.ecx == 0xC0000083))
+
+        if tmp_state.satisfiable():
+            # utils.print_vuln('arbitrary rdmsr', '', state, {'Register': str(state.regs.ecx)}, {})    
+            utils.print_vuln('arbitrary rdmsr', '', state, {'Register': str(state.regs.ecx)}, {})
+
+# Output byte from memory location specified in DS:(E)SI or RSI to I/O port specified in DX2.
+def outs_hook(state):
+    # print("REGISTRI IN OUTS Hook",state.regs.esi,state.regs.edx)
+    if utils.tainted_buffer(state.regs.edx) and utils.tainted_buffer(state.regs.esi):
+        tmp_state = state.copy()
+        tmp_state.solver.add(tmp_state.regs.edx == 0xcf9)
+        tmp_state.solver.add(tmp_state.regs.esi == 0xe)
+        if tmp_state.satisfiable():
+            utils.print_vuln('arbitrary outs vuln', '', state, {'I/O Port': str(state.regs.edx), 'Value': str(state.regs.esi)}, {})
+
+
+# Instruction	Op/En	64-Bit Mode	Compat/Leg Mode	Description
+# E6 ib	OUT imm8, AL	I	Valid	Valid	Output byte in AL to I/O port address imm8.
+# E7 ib	OUT imm8, AX	I	Valid	Valid	Output word in AX to I/O port address imm8.
+# E7 ib	OUT imm8, EAX	I	Valid	Valid	Output doubleword in EAX to I/O port address imm8.
+# EE	OUT DX, AL	ZO	Valid	Valid	Output byte in AL to I/O port address in DX.
+# EF	OUT DX, AX	ZO	Valid	Valid	Output word in AX to I/O port address in DX.
+def out_hook(state):
+    # print("REGISTRI IN OUT Hook",state.regs.dx)
+    if utils.tainted_buffer(state.regs.edx) and utils.tainted_buffer(state.regs.eax):
+        # check semplice se c'e' qualche limite sui valori di outb, 0xcf9 - 0xe fa riavviare il sistema
+        tmp_state = state.copy()
+        tmp_state.solver.add(tmp_state.regs.edx == 0xcf9)
+        tmp_state.solver.add(tmp_state.regs.eax == 0xe)
+        if tmp_state.satisfiable():
+            utils.print_vuln('arbitrary out vuln', '', state, {'I/O Port': str(state.regs.edx), 'Value': str(state.regs.eax)}, {})
+
+
+# Opcode	Instruction	Op/En	64-Bit Mode	Compat/Leg Mode	Description
+# 6C	INS m8, DX	ZO	Valid	Valid	Input byte from I/O port specified in DX into memory location specified in ES:(E)DI or RDI.1
+# 6D	INS m16, DX	ZO	Valid	Valid	Input word from I/O port specified in DX into memory location specified in ES:(E)DI or RDI.1
+# 6D	INS m32, DX	ZO	Valid	Valid	Input doubleword from I/O port specified in DX into memory location specified in ES:(E)DI or RDI.1
+# 6C	INSB	ZO	Valid	Valid	Input byte from I/O port specified in DX into memory location specified with ES:(E)DI or RDI.1
+# 6D	INSW	ZO	Valid	Valid	Input word from I/O port specified in DX into memory location specified in ES:(E)DI or RDI.1
+# 6D	INSD	ZO	Valid	Valid	Input doubleword from I/O port specified in DX into memory location specified in ES:(E)DI or RDI.1
+def ins_hook(state):
+    if utils.tainted_buffer(state.regs.edx) and utils.tainted_buffer(state.regs.edi):
+        tmp_state = state.copy()
+        tmp_state.solver.add(tmp_state.regs.edx == 0xcf9)
+        tmp_state.solver.add(tmp_state.regs.edi == 0xe)
+        if tmp_state.satisfiable():
+            utils.print_vuln('arbitrary insb vuln', '', state, {'I/O Port': str(state.regs.edx), 'Memory Address': str(state.regs.edi)}, {})
+
+# Opcode	Mnemonic	Description
+# E4 ib	IN AL,imm8	Input byte from imm8 I/O port address into AL.
+# E5 ib	IN AX,imm8	Input byte from imm8 I/O port address into AX.
+# E5 ib	IN EAX,imm8	Input byte from imm8 I/O port address into EAX.
+# EC	IN AL,DX	Input byte from I/O port in DX into AL.
+# ED	IN AX,DX	Input word from I/O port in DX into AX.
+# ED	IN EAX,DX	Input doubleword from I/O port in DX into EAX.
+
+def in_hook(state):
+    if utils.tainted_buffer(state.regs.edx):
+        tmp_state = state.copy()
+        tmp_state.solver.add(tmp_state.regs.edx == 0xcf9)
+        if tmp_state.satisfiable():
+            utils.print_vuln('arbitrary in vuln', '', state, {'I/O Port': str(state.regs.edx)}, {})

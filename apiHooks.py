@@ -83,6 +83,8 @@ class HookMmMapIoSpace(angr.SimProcedure):
             utils.print_vuln('map physical memory', 'MmMapIoSpace - NumberOfBytes controllable', self.state, {'PhysicalAddress': str(PhysicalAddress), 'NumberOfBytes': str(NumberOfBytes), 'CacheType': str(CacheType)}, {'return address': hex(self.state.callstack.ret_addr)})
         return 0
 
+
+
 # PVOID MmMapIoSpaceEx(
 #   [in] PHYSICAL_ADDRESS PhysicalAddress,
 #   [in] SIZE_T           NumberOfBytes,
@@ -124,7 +126,7 @@ class HookPsLookupProcessByProcessId(angr.SimProcedure):
 #   [in]           KPROCESSOR_MODE AccessMode,
 #   [out]          PHANDLE         Handle
 # );
-# controlla se oggetto e' stato simbolizzato e tainted, e simbolizza handle come bvs
+# controlla se oggetto e' stato simbolizzato e tainted, e simbolizza handle per propagarlo
 class HookObOpenObjectByPointer(angr.SimProcedure):
     def run(self, Object, HandleAttributes, PassedAccessState, DesiredAccess, ObjectType, AccessMode, Handle):
         if globals.phase == 2:
@@ -199,7 +201,21 @@ class HookHalTranslateBusAddress(angr.SimProcedure):
     def run(self, InterfaceType, BusNumber, BusAddress, AddressSpace, TranslatedAddress):
         self.state.memory.store(TranslatedAddress, BusNumber + BusAddress, self.state.arch.bytes, endness=self.state.arch.memory_endness, disable_actions=True, inspect=False)
         return 1
-
+# class HookHalTranslateBusAddress(angr.SimProcedure):
+#     def run(self, InterfaceType, BusNumber, BusAddress, AddressSpace, TranslatedAddress):
+#         ret_addr = hex(self.state.callstack.ret_addr)
+#         if utils.tainted_buffer(BusNumber) or utils.tainted_buffer(BusAddress):
+#             # Create a single symbolic value for the translated address
+#             # to avoid accumulating offsets on repeated calls
+#             trans_addr = claripy.BVS(f'HalTranslateBusAddress_{ret_addr}', self.state.arch.bits)
+#             self.state.memory.store(TranslatedAddress, trans_addr, self.state.arch.bytes, 
+#                                     endness=self.state.arch.memory_endness, disable_actions=True, inspect=False)
+#             self.state.globals['tainted_translated_addresses'] += (str(trans_addr),)
+#         else:
+#             self.state.memory.store(TranslatedAddress, BusNumber + BusAddress, 
+#                                     self.state.arch.bytes, endness=self.state.arch.memory_endness, 
+#                                     disable_actions=True, inspect=False)
+#         return 1
 
 class HookIoStartPacket(angr.SimProcedure):
     # Call DriverStartIo when IoStartPacket is called.
@@ -224,6 +240,7 @@ class HookExAllocatePoolWithTag(angr.SimProcedure):
 
             ret_addr = hex(self.state.callstack.ret_addr)
             allocated_ptr = claripy.BVS(f'ExAllocatePoolWithTag_{ret_addr}', self.state.arch.bits)
+            globals.active_buffers[str(allocated_ptr)] = int(self.state.solver.eval(NumberOfBytes))
             return allocated_ptr    
         else:
             return utils.next_base_addr()
@@ -233,6 +250,71 @@ class HookExAllocatePoolWithTag(angr.SimProcedure):
 # Per ora semplice hook che esegue la funzione memcpy originale
 class HookMemcpy(angr.SimProcedure):
     def run(self, dest, src, size):
+        print("HookMemcpy - dest: ", dest)
+        print("HookMemcpy - src: ", src)
+        print("HookMemcpy - size: ", size)
+
+        for pool in globals.pools:
+            if pool in str(dest):
+                print("STOCAZZO")
+                buf_size = globals.active_buffers[str(dest)]
+                print("STOCAZZO2")
+                print("Buffer size: ", buf_size)
+
+                # memcpy_size = self.state.solver.eval(size)
+                # print("Memcpy size: ", memcpy_size)
+                tmp_state = self.state.copy()
+                tmp_state.add_constraints(size > buf_size)
+
+                if tmp_state.solver.satisfiable():
+                    utils.print_vuln('buffer overflow', 'memcpy - size controllable and larger than buffer', self.state, {'dest': str(dest), 'src': str(src), 'size': str(size)}, {'return address': hex(self.state.callstack.ret_addr)})
         angr.procedures.SIM_PROCEDURES['libc']['memcpy'](cc=self.cc).execute(self.state, arguments=(dest, src, size))
 
         return 0
+
+# VOID ProbeForRead(
+#   [in] const volatile VOID *Address,
+#   [in] SIZE_T              Length,
+#   [in] ULONG               Alignment
+# );
+class HookProbeForRead(angr.SimProcedure):
+    def run(self, Address, Length, Alignment):
+        if globals.phase == 2:
+            if utils.tainted_buffer(Address):
+                asts = [i for i in Address.children_asts()]
+                target_base = asts[0] if len(asts) > 1 else Address
+                # print("ProbeForRead - Address : ", target_base)
+
+                self.state.globals['tainted_ProbeForRead'] += (str(target_base),)
+            
+
+
+# VOID ProbeForWrite(
+#   [in, out] volatile VOID *Address,
+#   [in]      SIZE_T        Length,
+#   [in]      ULONG         Alignment
+# );
+class HookProbeForWrite(angr.SimProcedure):
+    def run(self, Address, Length, Alignment):
+        if globals.phase == 2:
+            if utils.tainted_buffer(Address):
+                asts = [i for i in Address.recursive_children_asts]
+                target_base = asts[0] if len(asts) > 1 else Address
+                # ret_addr = hex(self.state.callstack.ret_addr)
+                self.state.globals['tainted_ProbeForWrite'] += (str(target_base), )
+
+
+# BOOLEAN MmIsAddressValid(
+#   [in] PVOID VirtualAddress
+# );
+# i don't think this tainting is really useful tainting the address, 
+# so for now is commented until i understand why ioctlance taints it
+class HookMmIsAddressValid(angr.SimProcedure):
+    def run(self, Address):
+        # if globals.phase == 2:
+        #     if utils.tainted_buffer(Address):
+        #         asts = [i for i in Address.recursive_children_asts]
+        #         target_base = asts[0] if len(asts) > 1 else Address
+        #         # ret_addr = hex(self.state.callstack.ret_addr)
+        #         self.state.globals['tainted_MmIsAddressValid'] += (str(target_base), )
+        return 1
