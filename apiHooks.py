@@ -246,32 +246,170 @@ class HookExAllocatePoolWithTag(angr.SimProcedure):
             return utils.next_base_addr()
 
 
+# PVOID ExAllocatePoolWithQuotaTag(
+#   [in] __drv_strictTypeMatch(__drv_typeExpr)POOL_TYPE PoolType,
+#   [in] SIZE_T                                         NumberOfBytes,
+#   [in] ULONG                                          Tag
+# );
 
-# Per ora semplice hook che esegue la funzione memcpy originale
+
+
+# DECLSPEC_RESTRICT PVOID ExAllocatePool2(
+#   POOL_FLAGS Flags,
+#   SIZE_T     NumberOfBytes,
+#   ULONG      Tag
+# );
+class HookExAllocatePool2(angr.SimProcedure):
+    def run(self, Flags, NumberOfBytes, Tag):
+        if globals.phase == 2:
+            if utils.tainted_buffer(NumberOfBytes):
+                utils.print_vuln('allocate pool', 'ExAllocatePool2 - NumberOfBytes controllable', self.state, {'Flags': str(Flags), 'NumberOfBytes': str(NumberOfBytes), 'Tag': str(Tag)})
+
+            ret_addr = hex(self.state.callstack.ret_addr)
+            allocated_ptr = claripy.BVS(f'ExAllocatePool2_{ret_addr}', self.state.arch.bits)
+            globals.active_buffers[str(allocated_ptr)] = int(self.state.solver.eval(NumberOfBytes))
+            return allocated_ptr    
+        else:
+            return utils.next_base_addr()
+
+# DECLSPEC_RESTRICT PVOID ExAllocatePool3(
+#   POOL_FLAGS                Flags,
+#   SIZE_T                    NumberOfBytes,
+#   ULONG                     Tag,
+#   PCPOOL_EXTENDED_PARAMETER ExtendedParameters,
+#   ULONG                     ExtendedParametersCount
+# );
+class HookExAllocatePool3(angr.SimProcedure):
+    def run(self, Flags, NumberOfBytes, Tag, ExtendedParameters, ExtendedParametersCount):
+        if globals.phase == 2:
+            if utils.tainted_buffer(NumberOfBytes):
+                utils.print_vuln('allocate pool', 'ExAllocatePool3 - NumberOfBytes controllable', self.state, {'Flags': str(Flags), 'NumberOfBytes': str(NumberOfBytes), 'Tag': str(Tag), 'ExtendedParameters': str(ExtendedParameters), 'ExtendedParametersCount': str(ExtendedParametersCount)})
+
+            ret_addr = hex(self.state.callstack.ret_addr)
+            allocated_ptr = claripy.BVS(f'ExAllocatePool3_{ret_addr}', self.state.arch.bits)
+            globals.active_buffers[str(allocated_ptr)] = int(self.state.solver.eval(NumberOfBytes))
+            return allocated_ptr    
+        else:
+            return utils.next_base_addr()
+
+# VOID ExFreePoolWithTag(
+#   [in] PVOID P,
+#   [in] ULONG Tag
+# );
+class HookExFreePoolWithTag(angr.SimProcedure):
+    def run(self, P, Tag):
+        # Controllo se il buffer liberato da ExFreePoolWithTag e' controllabile
+        if globals.phase == 2:
+            # print("Dentro ExFreePoolWithTagP: ", P)
+            if utils.tainted_buffer(P):
+                utils.print_vuln('free pool', 'ExFreePoolWithTag - buffer controllable', self.state, {'P': str(P), 'Tag': str(Tag)}, {'return address': hex(self.state.callstack.ret_addr)})
+
+            if P in globals.freed_set:
+                utils.print_vuln('double free', 'ExFreePoolWithTag - buffer already freed', self.state, {'P': str(P), 'Tag': str(Tag)}, {'return address': hex(self.state.callstack.ret_addr)})
+            else:
+                # Add to freed set
+                globals.freed_set.add(P)
+                # Remove from active buffers
+
+                if P in globals.active_buffers:
+                    print("Freeing buffer: ", P)
+                    del globals.active_buffers[P]
+                    return
+                
+# VOID ExFreePool(
+#   [in] PVOID P
+# );
+class HookExFreePool(angr.SimProcedure):
+    def run(self, P):
+        # Controllo se il buffer liberato da ExFreePoolWithTag e' controllabile
+        if globals.phase == 2:
+            # print("Dentro ExFreePoolWithTagP: ", P)
+            if utils.tainted_buffer(P):
+                utils.print_vuln('free pool', 'ExFreePool - buffer controllable', self.state, {'P': str(P), 'Tag': str(Tag)}, {'return address': hex(self.state.callstack.ret_addr)})
+
+            if P in globals.freed_set:
+                utils.print_vuln('double free', 'ExFreePool - buffer already freed', self.state, {'P': str(P), 'Tag': str(Tag)}, {'return address': hex(self.state.callstack.ret_addr)})
+            else:
+                # Add to freed set
+                globals.freed_set.add(P)
+                # Remove from active buffers
+
+                if P in globals.active_buffers:
+                    print("Freeing buffer: ", P)
+                    del globals.active_buffers[P]
+                    return
+                        
+# VOID ExFreePool2(
+#   [in]           PVOID                     P,
+#   [in]           ULONG                     Tag,
+#   [in, optional] PCPOOL_EXTENDED_PARAMETER ExtendedParameters,
+#   [in]           ULONG                     ExtendedParametersCount
+# );
+class HookExFreePool2(angr.SimProcedure):
+    def run(self, P, Tag, ExtendedParameters, ExtendedParametersCount):
+         # Controllo se il buffer liberato da ExFreePoolWithTag e' controllabile
+        if globals.phase == 2:
+            # print("Dentro ExFreePoolWithTagP: ", P)
+            if utils.tainted_buffer(P):
+                utils.print_vuln('free pool', 'ExFreePool2 - buffer controllable', self.state, {'P': str(P), 'Tag': str(Tag), 'ExtendedParameters': str(ExtendedParameters), 'ExtendedParametersCount': str(ExtendedParametersCount)}, {'return address': hex(self.state.callstack.ret_addr)})
+
+            if P in globals.freed_set:
+                utils.print_vuln('double free', 'ExFreePool2 - buffer already freed', self.state, {'P': str(P), 'Tag': str(Tag)}, {'return address': hex(self.state.callstack.ret_addr)})
+            else:
+                # Add to freed set
+                globals.freed_set.add(P)
+                # Remove from active buffers
+
+                if P in globals.active_buffers:
+                    print("Freeing buffer: ", P)
+                    del globals.active_buffers[P]
+                    return
+                
+
+
 class HookMemcpy(angr.SimProcedure):
     def run(self, dest, src, size):
-        print("HookMemcpy - dest: ", dest)
-        print("HookMemcpy - src: ", src)
-        print("HookMemcpy - size: ", size)
+        # print("HookMemcpy - dest: ", dest)
+        # print("HookMemcpy - src: ", src)
+        # print("HookMemcpy - size: ", size)
+        
+        if utils.tainted_buffer(size):
+            is_pool_buffer = False  # Track if we identified this as a pool buffer
+            
+            # 1. Check for Pool Buffer Overflow
+            for pool in globals.pools:
+                if pool in str(dest):
+                    is_pool_buffer = True  # Mark that it belongs to a pool
+                    buf_size = globals.active_buffers[str(dest)]
+                    # print("Buffer size: ", buf_size)
 
-        for pool in globals.pools:
-            if pool in str(dest):
-                print("STOCAZZO")
-                buf_size = globals.active_buffers[str(dest)]
-                print("STOCAZZO2")
-                print("Buffer size: ", buf_size)
+                    tmp_state = self.state.copy()
+                    tmp_state.add_constraints(size > buf_size)
 
-                # memcpy_size = self.state.solver.eval(size)
-                # print("Memcpy size: ", memcpy_size)
-                tmp_state = self.state.copy()
-                tmp_state.add_constraints(size > buf_size)
+                    if tmp_state.solver.satisfiable():
+                        utils.print_vuln('Pool buffer overflow', 'memcpy - size controllable and larger than buffer', self.state, {'dest': str(dest), 'src': str(src), 'size': str(size)}, {'return address': hex(self.state.callstack.ret_addr)})
+                    
+                    break  # We found the matching pool, no need to check other pools
 
-                if tmp_state.solver.satisfiable():
-                    utils.print_vuln('buffer overflow', 'memcpy - size controllable and larger than buffer', self.state, {'dest': str(dest), 'src': str(src), 'size': str(size)}, {'return address': hex(self.state.callstack.ret_addr)})
+            # 2. Check for Stack Buffer Overflow (ONLY if it's not a pool buffer)
+            if not is_pool_buffer:
+            # if 1:
+                tmp_state2 = self.state.copy()
+
+                if utils.is_stack_address(tmp_state2, dest):
+                    caller_rbp = self.state.regs.rbp # Recupera il Base Pointer del chiamante
+                    return_addr_location = caller_rbp + 8
+
+                    # Condizione: L'inizio del buffer + la dimensione della copia superano l'indirizzo di ritorno?
+                    tmp_state2.add_constraints(dest + size > return_addr_location)
+
+                    if tmp_state2.solver.satisfiable():
+                        utils.print_vuln('Stack buffer overflow', 'memcpy - return address controllable', self.state, {'dest': str(dest), 'src': str(src), 'size': str(size)}, {'return address': hex(self.state.callstack.ret_addr)})
+                
+        # 3. Execute the actual memcpy behavior
         angr.procedures.SIM_PROCEDURES['libc']['memcpy'](cc=self.cc).execute(self.state, arguments=(dest, src, size))
 
         return 0
-
 # VOID ProbeForRead(
 #   [in] const volatile VOID *Address,
 #   [in] SIZE_T              Length,

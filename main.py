@@ -49,7 +49,7 @@ def hook_dangerous_asm(driver_path):
             utils.print_debug(f'insd at: {instr.address}')
             globals.proj.hook(instr.address, ophooks.ins_hook, instr.size)
 
-def find_vulns(driver_path, ioctl_handler_addr, ioctl_handler_state):
+def find_vulns(driver_path, ioctl_handler_addr, ioctl_handler_state, specific_ioctl_code=None):
 
     globals.phase = 2
     irp = claripy.BVS('irp_buf', 8 * 0x200)
@@ -119,9 +119,9 @@ def find_vulns(driver_path, ioctl_handler_addr, ioctl_handler_state):
     _params.DeviceIoControl.Type3InputBuffer = globals.Type3InputBuffer
 
     # Add check for custom ioctl codes
-    if globals.args.ioctlcode:
-        _params.DeviceIoControl.IoControlCode.val = int(globals.args.ioctlcode, 16)
-        state.add_constraints(globals.IoControlCode == int(globals.args.ioctlcode, 16))
+    if specific_ioctl_code:
+        _params.DeviceIoControl.IoControlCode.val = specific_ioctl_code
+        state.add_constraints(globals.IoControlCode == specific_ioctl_code)
     else:
         _params.DeviceIoControl.IoControlCode.val = globals.IoControlCode
 
@@ -177,6 +177,7 @@ def hookDriver(driver_path):
     globals.proj.hook_symbol('PsLookupProcessByProcessId', apiHooks.HookPsLookupProcessByProcessId(cc=globals.cc))
     globals.proj.hook_symbol('ObOpenObjectByPointer', apiHooks.HookObOpenObjectByPointer(cc=globals.cc))
     globals.proj.hook_symbol('IoCreateSymbolicLink', apiHooks.HookIoCreateSymbolicLink(cc=globals.cc))
+
     
     globals.proj.hook_symbol('ProbeForRead', apiHooks.HookProbeForRead(cc=globals.cc))
     globals.proj.hook_symbol('ProbeForWrite', apiHooks.HookProbeForWrite(cc=globals.cc))
@@ -187,11 +188,12 @@ def hookDriver(driver_path):
     globals.proj.hook_symbol('ZwTerminateProcess', apiHooks.HookZwTerminateProcess(cc=globals.cc))
 
     globals.proj.hook_symbol("ExAllocatePoolWithTag", apiHooks.HookExAllocatePoolWithTag(cc=globals.cc))
+    globals.proj.hook_symbol("ExAllocatePool2", apiHooks.HookExAllocatePool2(cc=globals.cc))
+    globals.proj.hook_symbol("ExAllocatePool3", apiHooks.HookExAllocatePool3(cc=globals.cc))
 
-    ioctl_handler_addr, ioctl_handler_state = utils.find_ioctl_handler(driver_path)
-    print(f"IOCTL handler address: {hex(ioctl_handler_addr)}")
-
-    find_vulns(driver_path, ioctl_handler_addr, ioctl_handler_state)
+    globals.proj.hook_symbol("ExFreePoolWithTag", apiHooks.HookExFreePoolWithTag(cc=globals.cc))
+    globals.proj.hook_symbol("ExFreePool2", apiHooks.HookExFreePool2(cc=globals.cc))
+    globals.proj.hook_symbol("ExFreePool", apiHooks.HookExFreePool(cc=globals.cc))
 
 
 if __name__ == "__main__":
@@ -203,7 +205,7 @@ if __name__ == "__main__":
     parser.add_argument('-r', '--recursion', default=False, action='store_true', help='do not kill state if detecting recursion (default False)')
     parser.add_argument('-l', '--length', type=int, default=0, help='the limit of number of instructions for technique LengthLimiter (default 0, 0 to unlimited)')
     parser.add_argument('-b', '--bound', type=int, default=0, help='the bound for technique LoopSeer (default 0, 0 to unlimited)')
-    parser.add_argument('-i', '--ioctlcode', default=0, help='analyze specified IoControlCode (e.g. 22201c)')
+    parser.add_argument('-i', '--ioctlcode', nargs='*', default=[], help='analyze specified IoControlCode(s) (e.g. 22201c 222020 222024). If not specified, all will be analyzed')
     globals.args = parser.parse_args()
 
     driver = globals.args.path
@@ -223,4 +225,26 @@ if __name__ == "__main__":
     logging.getLogger('angr').setLevel(logging.ERROR)
 
     hookDriver(driver)
+
+    # Get IOCTL handler
+    ioctl_handler_addr, ioctl_handler_state = utils.find_ioctl_handler(driver)
+    print(f"IOCTL handler address: {hex(ioctl_handler_addr)}")
+
+    # Handle IOCTL codes
+    if globals.args.ioctlcode:
+        # If specific IOCTL codes are provided, analyze each one
+        print(f"Analyzing {len(globals.args.ioctlcode)} specified IoControlCode(s)...")
+        for ioctl_code_str in globals.args.ioctlcode:
+            try:
+                ioctl_code_int = int(ioctl_code_str, 16)
+                print(f"\n{'='*60}")
+                print(f"Analyzing IoControlCode: {hex(ioctl_code_int)} ({ioctl_code_str})")
+                print(f"{'='*60}")
+                find_vulns(driver, ioctl_handler_addr, ioctl_handler_state, specific_ioctl_code=ioctl_code_int)
+            except ValueError:
+                print(f"Error: Invalid hex value for IoControlCode: {ioctl_code_str}")
+    else:
+        # If no specific IOCTL codes, analyze all
+        print("Analyzing all IoControlCodes...")
+        find_vulns(driver, ioctl_handler_addr, ioctl_handler_state)
 

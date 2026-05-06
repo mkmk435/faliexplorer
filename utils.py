@@ -80,8 +80,45 @@ def fix_object_type_import(state: angr.SimState, object_type_name: str, object_t
     state.memory.store(ps_object_type, star_ps_object_type, state.arch.bytes, endness=state.arch.memory_endness, disable_actions=True, inspect=False)
     return star_ps_object_type
     
+def is_stack_address(state, addr_ast):
+    """
+    Checks if a given angr AST address definitively points to the stack.
+    """
+    stack_base = state.arch.initial_sp
+    stack_limit = stack_base - 0x100000 # Standard 1MB stack limit in windows kernel
+    
+    # 1. Fast Path: If the address is concrete, we don't need the solver
+    if addr_ast.concrete:
+        # Extract the integer value from the AST
+        addr_val = addr_ast.args[0] 
+        return stack_limit <= addr_val <= stack_base
+        
+    # 2. Symbolic Path: If the address is symbolic, it might span multiple regions
+    try:
+        # Ask the solver: Is it mathematically possible for this address to be OUTSIDE the stack?
+        can_be_outside = state.solver.satisfiable(extra_constraints=[
+            state.solver.Or(addr_ast < stack_limit, addr_ast > stack_base)
+        ])
+        
+        # Ask the solver: Is it mathematically possible for this address to be INSIDE the stack?
+        can_be_inside = state.solver.satisfiable(extra_constraints=[
+            addr_ast >= stack_limit,
+            addr_ast <= stack_base
+        ])
+        
+        # If it can be inside, but CANNOT be outside, it is definitely a stack buffer.
+        if can_be_inside and not can_be_outside:
+            return True
+            
+        # If it can be inside AND outside (can_be_inside and can_be_outside == True),
+        # this is usually an unconstrained pointer (Arbitrary Write / Write-What-Where),
+        # not a localized stack buffer. We return False to avoid false stack detections.
+        return False
 
-
+    except angr.errors.SimSolverError:
+        # If constraints are too complex or contradictory, fail safely
+        return False
+    
 def find_hook_func():
     # Use signature to find memset and memcpy because they are not imported function in Windows kernel.
     memset_hook_address = None
@@ -260,3 +297,5 @@ def print_debug(msg):
     """Print debug information if DEBUG mode is enabled."""
     if getattr(globals, 'DEBUG', False):
         print(f"[DEBUG] {msg}")
+
+

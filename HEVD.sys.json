@@ -3,15 +3,15 @@
         "path": "HEVD.sys",
         "time": {
             "ioctl handler": 0,
-            "hunting vulns": 199
+            "hunting vulns": 1
         },
         "memory": {
             "ioctl handler": 3840,
-            "hunting vulns": 1110836
+            "hunting vulns": 52992
         },
         "unique addr": {
             "ioctl handler": 89,
-            "hunting vulns": 2632
+            "hunting vulns": 126
         },
         "DeviceName": [
             "\\Device\\HackSysExtremeVulnerableDriver"
@@ -21,34 +21,7 @@
         ],
         "ioctl handler": "0x140085078",
         "IoControlCodes": [
-            "0x222057",
-            "0x222047",
-            "0x22204b",
-            "0x22204f",
-            "0x222053",
-            "0x222043",
-            "0x22203f",
-            "0x22205b",
-            "0x22205f",
-            "0x222063",
-            "0x22206b",
-            "0x22206f",
-            "0x222067",
-            "0x22201f",
-            "0x222003",
-            "0x222007",
-            "0x22200b",
-            "0x222013",
-            "0x22201b",
-            "0x222017",
-            "0x22200f",
-            "0x22202f",
-            "0x222037",
-            "0x222033",
-            "0x22202b",
-            "0x222027",
-            "0x222023",
-            "0x22203b"
+            "0x222003"
         ]
     },
     "vuln": [
@@ -75,109 +48,7 @@
                     "<BV64 Type3InputBuffer_24_64>"
                 ]
             }
-        },
-        {
-            "title": "buffer overflow",
-            "description": "memcpy/memmove",
-            "state": "<SimState @ 0x1400011c0>",
-            "parameters": {
-                "dest": "<BV64 0x7fffffffffefd20>",
-                "src": "<BV64 Type3InputBuffer_24_64>",
-                "size": "<BV64 0x0 .. InputBufferLength_29_32>"
-            },
-            "eval": {
-                "IoControlCode": "0x222007",
-                "SystemBuffer": "0x0",
-                "Type3InputBuffer": "0xffffffffffffffff",
-                "UserBuffer": "0x0",
-                "InputBufferLength": "0x0",
-                "OutputBufferLength": "0x0"
-            },
-            "others": {
-                "return address": "0x1400867b9",
-                "ProbeForRead": [
-                    "<BV64 Type3InputBuffer_24_64>"
-                ]
-            }
-        },
-        {
-            "title": "dest or src controllable",
-            "description": "memcpy/memmove",
-            "state": "<SimState @ 0x1400011c0>",
-            "parameters": {
-                "dest": "<BV64 0x7fffffffffef750>",
-                "src": "<BV64 *<BV64 Type3InputBuffer_24_64>_376_4096[63:0]>",
-                "size": "<BV64 *<BV64 Type3InputBuffer_24_64>_376_4096[127:64]>"
-            },
-            "eval": {
-                "IoControlCode": "0x222037",
-                "SystemBuffer": "0x0",
-                "Type3InputBuffer": "0x44690000",
-                "UserBuffer": "0x0",
-                "InputBufferLength": "0x0",
-                "OutputBufferLength": "0x0"
-            },
-            "others": {
-                "return address": "0x140086916",
-                "ProbeForRead": [
-                    "<BV64 Type3InputBuffer_24_64>"
-                ]
-            }
-        },
-        {
-            "title": "arbitrary shellcode execution",
-            "description": "",
-            "state": "<SimState @ 0x1337>",
-            "parameters": {},
-            "eval": {
-                "IoControlCode": "0x222023",
-                "SystemBuffer": "0x0",
-                "Type3InputBuffer": "0x446e0000",
-                "UserBuffer": "0x0",
-                "InputBufferLength": "0x0",
-                "OutputBufferLength": "0x0"
-            },
-            "others": {
-                "function address": "<BV64 *<BV64 Type3InputBuffer_24_64>_592_4096[127:64]>",
-                "return address": "0x14008754e",
-                "ProbeForRead": [
-                    "<BV64 Type3InputBuffer_24_64>"
-                ]
-            }
         }
     ],
-    "error": [
-        "<State errored with \"No bytes in memory for block starting at 0x3f17ffffd.\">",
-        "<State errored with \"No bytes in memory for block starting at 0x1ffffd.\">",
-        "<State errored with \"No bytes in memory for block starting at 0x3fffd.\">",
-        "<State errored with \"No bytes in memory for block starting at 0xff17ffffd.\">",
-        "<State errored with \"No bytes in memory for block starting at 0x7ffffd.\">",
-        "<State errored with \"No bytes in memory for block starting at 0xffffd.\">",
-        "<State errored with \"No bytes in memory for block starting at 0x1fd.\">",
-        "<State errored with \"No bytes in memory for block starting at 0x717ffffd.\">",
-        "<State errored with \"No bytes in memory for block starting at 0xfd.\">",
-        "<State errored with \"No bytes in memory for block starting at 0x7d.\">",
-        "<State errored with \"No bytes in memory for block starting at 0x1f17ffffd.\">",
-        "<State errored with \"No bytes in memory for block starting at 0x3d.\">",
-        "<State errored with \"No bytes in memory for block starting at 0x7f17ffffd.\">",
-        "<State errored with \"No bytes in memory for block starting at 0xf17ffffd.\">",
-        "<State errored with \"No bytes in memory for block starting at 0x1ffd.\">",
-        "<State errored with \"No bytes in memory for block starting at 0xfffd.\">",
-        "<State errored with \"No bytes in memory for block starting at 0xd.\">",
-        "<State errored with \"No bytes in memory for block starting at 0x7fd.\">",
-        "<State errored with \"No bytes in memory for block starting at 0x3ffd.\">",
-        "<State errored with \"No bytes in memory for block starting at 0xffffffffffffffff.\">",
-        "<State errored with \"No bytes in memory for block starting at 0x1.\">",
-        "<State errored with \"No bytes in memory for block starting at 0x17ffffd.\">",
-        "<State errored with \"No bytes in memory for block starting at 0x1fffd.\">",
-        "<State errored with \"No bytes in memory for block starting at 0x3ffffd.\">",
-        "<State errored with \"No bytes in memory for block starting at 0x117ffffd.\">",
-        "<State errored with \"No bytes in memory for block starting at 0x7fffd.\">",
-        "<State errored with \"No bytes in memory for block starting at 0x1d.\">",
-        "<State errored with \"No bytes in memory for block starting at 0x317ffffd.\">",
-        "<State errored with \"No bytes in memory for block starting at 0x7ffd.\">",
-        "<State errored with \"No bytes in memory for block starting at 0xffd.\">",
-        "<State errored with \"No bytes in memory for block starting at 0x5.\">",
-        "<State errored with \"No bytes in memory for block starting at 0x3fd.\">"
-    ]
+    "error": []
 }

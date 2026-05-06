@@ -8,6 +8,19 @@ def b_mem_read(state):
     # utils.print_debug(f'mem_read {state}, {state.inspect.mem_read_address}, {state.inspect.mem_read_expr}, {state.inspect.mem_read_length}, {state.inspect.mem_read_condition}')
     
     try:
+        # =====================================================================
+        # Use-After-Free Detection
+        # =====================================================================
+        if globals.phase == 2:
+            # check se il read_addr e' simbolico
+            if state.inspect.mem_read_address.symbolic:
+                read_addr = state.inspect.mem_read_address
+                for freed_addr in globals.freed_set:
+                    print(f'read_addr: {read_addr} freed_addr: {freed_addr}')
+                    if read_addr == freed_addr:
+                        utils.print_vuln('use-after-free', 'read from freed memory', state, {}, {'read from': hex(read_addr)})
+                        break
+            
         # Iterate all target buffers.
         for target in globals.NPD_TARGETS:
             if target in str(state.inspect.mem_read_address):
