@@ -56,6 +56,7 @@ def disasm_file(file_path):
             for instruction in md.disasm(code_bytes, base_address):
                 instruction_list.append(instruction)
                 if 'text' in sec_name:
+                    # print(f"Instruction: {instruction.mnemonic} {instruction.op_str} at address: {hex(instruction.address)}")
                     text_list.append(instruction)
 
     return instruction_list, text_list

@@ -10,10 +10,11 @@ import kertypes
 import claripy
 import memHooks
 import techniques
-
+import traceback
 
 def hook_dangerous_asm(driver_path):
     total_instr, text_instr = utils.disasm_file(driver_path)
+
 
     for instr in text_instr:
         if instr.mnemonic == 'wrmsr':
@@ -48,7 +49,15 @@ def hook_dangerous_asm(driver_path):
         elif instr.mnemonic == 'insd':
             utils.print_debug(f'insd at: {instr.address}')
             globals.proj.hook(instr.address, ophooks.ins_hook, instr.size)
+        elif instr.mnemonic == 'mov':
+            for cr in globals.control_registers:
+                operands = [op.strip() for op in instr.op_str.split(',')]
+                if operands[0] == cr:
+                    globals.proj.hook(instr.address, ophooks.wr_cr_hook, instr.size)
+                elif operands[1] == cr:
+                    globals.proj.hook(instr.address, ophooks.r_cr_hook, instr.size)
 
+        
 def find_vulns(driver_path, ioctl_handler_addr, ioctl_handler_state, specific_ioctl_code=None):
 
     globals.phase = 2
@@ -162,6 +171,8 @@ def hookDriver(driver_path):
     # Run CompleteCallingConventionsAnalysis on all functions to recover prototypes
     print("Analyzing calling conventions for all functions...")
     globals.proj.analyses.CompleteCallingConventions(recover_variables=True, cfg=globals.cfg)
+
+    hook_dangerous_asm(driver_path)
 
     #hook di memcpy e memset, non sono importate nel win kernel e sono lentissime
     #necessario per se vengono usate

@@ -93,3 +93,26 @@ def in_hook(state):
         tmp_state.solver.add(tmp_state.regs.edx == 0xcf9)
         if tmp_state.satisfiable():
             utils.print_vuln('arbitrary in vuln', '', state, {'I/O Port': str(state.regs.edx)}, {})
+
+
+def wr_cr_hook(state):
+    # usually rax is used to store the value to write in control registers, but we check also rdx for completeness
+    current_capstone_instr = state.inspect.instruction
+    # Assuming 'state' is your current angr SimState
+    instruction = state.project.factory.block(state.addr, num_inst=1).capstone.insns[0]
+
+    operands = [op.strip() for op in instruction.op_str.split(',')]
+    source_reg = operands[1] 
+    src_val = getattr(state.regs, source_reg)
+    if utils.tainted_buffer(src_val):
+        utils.print_vuln('write control register', '', state, {'Control Register': operands[0], 'Value': str(src_val)}, {})
+
+def r_cr_hook(state):
+    current_capstone_instr = state.inspect.instruction
+    # Assuming 'state' is your current angr SimState
+    instruction = state.project.factory.block(state.addr, num_inst=1).capstone.insns[0]
+
+    operands = [op.strip() for op in instruction.op_str.split(',')]
+    dest_reg = operands[0] 
+    if utils.tainted_buffer(dest_reg):
+        utils.print_vuln('read control register', '', state, {'Control Register': operands[1], 'Value': str(dest_reg)}, {})

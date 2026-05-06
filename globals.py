@@ -14,6 +14,8 @@ NPD_TARGETS = controllable_buffers
 pools = ['ExAllocatePool_0x', 'ExAllocatePool2_0x', 'ExAllocatePool3_0x', 'ExAllocatePoolWithTag_0x', 'MmAllocateNonCachedMemory_0x', 'MmAllocateContiguousMemorySpecifyCache_0x']
 
 free_pools_names = ['ExFreePoolWithTag_free', 'ExFreePool2_free', 'ExFreePool_free']
+control_registers = ['cr0', 'cr2', 'cr3', 'cr4', 'cr8']
+
 
 irp_addr = 0x69696900
 irsp_addr = 0x67676700
