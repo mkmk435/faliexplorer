@@ -9,6 +9,12 @@ import techniques
 import memHooks
 import apiHooks
 
+import traceback
+import cle
+from cle.backends.pe.relocation.generic import DllImport
+from typing import Optional
+
+
 
 
 vuln_rips = []
@@ -173,93 +179,90 @@ def read_buffer_from_unicode_string(state, unicode_string_pointer):
 
 def find_ioctl_handler(driver_path):
     # calcola il write address dell'ioctl handler
-    def b_write_ioctl_handler(state):
-            # Store the address of ioctl handler when writing into the memory.
-        ioctl_handler_addr = state.solver.eval(state.inspect.mem_write_expr)
-        state.globals['ioctl_handler'] = ioctl_handler_addr
-        globals.ioctl_handler = ioctl_handler_addr
-        #globals.simgr.move(from_stash='deadended', to_stash='_Drop')
+    try:
 
-    def b_mem_write_DriverStartIo(state):
-        # Store the address of DriverStartIo when writing into the memory.
-        DriverStartIo_addr = state.solver.eval(state.inspect.mem_write_expr)
-        globals.DriverStartIo = int(DriverStartIo_addr)
-        globals.basic_info['DriverStartIo'] = hex(globals.DriverStartIo)
-        print(f'DriverStartIo: {hex(globals.DriverStartIo)}')
+        globals.phase = 1
+        # _, text_instructions = disasm_file(driver_path)
 
-
-    # _, text_instructions = disasm_file(driver_path)
-
-    driver_object_addr = next_base_addr()
-    # device_object_addr = next_base_addr()
-    registry_path_addr = next_base_addr()
-    
-    state = globals.proj.factory.call_state(
-        globals.proj.entry,
-        driver_object_addr,
-        registry_path_addr,
-        cc=globals.cc
-    )
-
-    state.globals['open_section_handles'] = ()
-    state.globals['tainted_unicode_strings'] = ()
-    state.globals['ioctl_handler'] = 0
-
-    # fixup_import_symbols(state)
-
-    state.inspect.b('mem_write', mem_write_address=driver_object_addr + (0xe0 if globals.proj.arch.name == archinfo.ArchAMD64.name else 0x70), when=angr.BP_AFTER, action=b_write_ioctl_handler)
-    state.inspect.b('mem_write', mem_write_address=driver_object_addr + (0x60 if globals.proj.arch.name == archinfo.ArchAMD64.name else 0x30), when=angr.BP_AFTER, action=b_mem_write_DriverStartIo)
-    # state.inspect.b('call', when=angr.BP_BEFORE, action=memHooks.b_call)
-    # state.inspect.b('call', when=angr.BP_BEFORE, action=memHooks.universal_hook)
-
-    globals.simgr = globals.proj.factory.simgr(state)
-    globals.simgr.use_technique(angr.exploration_techniques.DFS())
-
-    # globals.simgr.use_technique(angr.exploration_techniques.LoopSeer(cfg=globals.cfg, functions=None, bound=globals.args.bound))
-    # globals.simgr.use_technique(angr.exploration_techniques.LocalLoopSeer(bound=globals.args.bound))
-    # globals.simgr.use_technique(angr.exploration_techniques.LengthLimiter(globals.args.length))
-
-
-    ed = techniques.ExplosionDetector(threshold=10000)
-    globals.simgr.use_technique(ed)
-
-    def filter_func(s):
-        # Return false if ioctl handler not found.
-        if not s.globals['ioctl_handler']:
-            return False
-        else:
-            return True
-
-    # Start symbolic execution to find the ioctl handler.
-    for i in range(0x100000):
-        try:
-            globals.simgr.step(num_inst=1)
-            # globals.simgr.step()
-        except Exception as e:
-            print(f'error on state {globals.simgr.active}: {str(e)}')
-            globals.simgr.move(from_stash='active', to_stash='_Drop')
-
-        # utils.print_debug(f'simgr: {globals.simgr}\n\tactive: {globals.simgr.active}\n\tdeferred: {globals.simgr.deferred}\n\terrored: {globals.simgr.errored}\n\tdeadneded: {globals.simgr.deadended}')
+        driver_object_addr = next_base_addr()
+        # device_object_addr = next_base_addr()
+        registry_path_addr = next_base_addr()
         
-        # If a state reach deadended, we check if the condition is satisfied with filter_func.
-        globals.simgr.move(from_stash='deadended', to_stash='found', filter_func=filter_func)
+        state = globals.proj.factory.call_state(
+            globals.proj.entry,
+            driver_object_addr,
+            registry_path_addr,
+            cc=globals.cc
+        )
 
-        # Once there is a state in the found stash, or there is no active and deferred states, we break the loop.
-        if len(globals.simgr.found) or (not len(globals.simgr.active) and not len(globals.simgr.deferred)):
-            break
-    else:
-        print('ERROR:ioctl handler not found')
-    
-    if globals.simgr.errored:
-        for s in globals.simgr.errored:
-            print(f'ERROR: {repr(s)}')
+        state.globals['open_section_handles'] = ()
+        state.globals['tainted_unicode_strings'] = ()
+        state.globals['ioctl_handler'] = 0
 
-    # Return the ioctl handler address and the state.
-    if len(globals.simgr.found):
-        success_state = globals.simgr.found[0]
-        return globals.ioctl_handler, success_state
-    else:
-        return globals.ioctl_handler, None
+        fixup_import_symbols(state)
+
+        state.inspect.b('mem_write', mem_write_address=driver_object_addr + (0xe0 if globals.proj.arch.name == archinfo.ArchAMD64.name else 0x70), when=angr.BP_AFTER, action=memHooks.b_write_ioctl_handler)
+        state.inspect.b('mem_write', mem_write_address=driver_object_addr + (0x60 if globals.proj.arch.name == archinfo.ArchAMD64.name else 0x30), when=angr.BP_AFTER, action=memHooks.b_mem_write_DriverStartIo)
+        state.inspect.b('call', when=angr.BP_BEFORE, action=memHooks.b_call)
+        # state.inspect.b('call', when=angr.BP_BEFORE, action=memHooks.universal_hook)
+
+        globals.simgr = globals.proj.factory.simgr(state)
+        globals.simgr.use_technique(angr.exploration_techniques.DFS())
+
+        # globals.simgr.use_technique(angr.exploration_techniques.LoopSeer(cfg=globals.cfg, functions=None, bound=globals.args.bound))
+        # globals.simgr.use_technique(angr.exploration_techniques.LocalLoopSeer(bound=globals.args.bound))
+        # globals.simgr.use_technique(angr.exploration_techniques.LengthLimiter(globals.args.length))
+
+
+        ed = techniques.ExplosionDetector(threshold=10000)
+        globals.simgr.use_technique(ed)
+
+        def filter_func(s):
+            # Return false if ioctl handler not found.
+            if not s.globals['ioctl_handler']:
+                return False
+            # If the complete mode on, we need to keep analyzing until the return value is STATUS_SUCCESS.
+            if globals.args.complete:
+                retval = globals.mycc.return_val(angr.types.BASIC_TYPES['long int']).get_value(s)
+                return s.solver.satisfiable(extra_constraints=[retval == 0])
+            else:
+                return True
+
+        # Start symbolic execution to find the ioctl handler.
+        for i in range(0x100000):
+            try:
+                globals.simgr.step(num_inst=1)
+                # globals.simgr.step()
+            except Exception as e:
+                print(f'error on state {globals.simgr.active}: {str(e)}')
+                globals.simgr.move(from_stash='active', to_stash='_Drop')
+
+            # utils.print_debug(f'simgr: {globals.simgr}\n\tactive: {globals.simgr.active}\n\tdeferred: {globals.simgr.deferred}\n\terrored: {globals.simgr.errored}\n\tdeadneded: {globals.simgr.deadended}')
+            
+            # If a state reach deadended, we check if the condition is satisfied with filter_func.
+            globals.simgr.move(from_stash='deadended', to_stash='found', filter_func=filter_func)
+
+            # Once there is a state in the found stash, or there is no active and deferred states, we break the loop.
+            if len(globals.simgr.found) or (not len(globals.simgr.active) and not len(globals.simgr.deferred)):
+                break
+        else:
+            print('ERROR:ioctl handler not found')
+        
+        if globals.simgr.errored:
+            for s in globals.simgr.errored:
+                print(f'ERROR: {repr(s)}')
+
+        # Return the ioctl handler address and the state.
+        if len(globals.simgr.found):
+            success_state = globals.simgr.found[0]
+            return globals.ioctl_handler, success_state
+        else:
+            return globals.ioctl_handler, None
+    except Exception as e:
+        print(f'Error in find_ioctl_handler: {str(e)}')
+        traceback.print_exc()
+        return None, None
+
 
 def tainted_buffer(buffer):
     # if len(state.variables) != 1:
@@ -300,3 +303,17 @@ def print_debug(msg):
         print(f"[DEBUG] {msg}")
 
 
+def resolve_import_symbol_in_object(pe_object: cle.backends.pe.pe.PE, symbol_name: str) -> Optional[int]:
+    if symbol_name not in pe_object.imports:
+        return None
+    
+    sym_import: DllImport = pe_object.imports[symbol_name]
+    return pe_object.min_addr + sym_import.relative_addr
+
+def resolve_import_symbol(loader: cle.loader.Loader, symbol_name: str) -> Optional[int]:
+    for obj in loader.all_objects:
+       result = resolve_import_symbol_in_object(obj, symbol_name)
+       if result:
+            return result
+    
+    return None

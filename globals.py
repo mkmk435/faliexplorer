@@ -15,6 +15,7 @@ pools = ['ExAllocatePool_0x', 'ExAllocatePool2_0x', 'ExAllocatePool3_0x', 'ExAll
 
 free_pools_names = ['ExFreePoolWithTag_free', 'ExFreePool2_free', 'ExFreePool_free']
 control_registers = ['cr0', 'cr2', 'cr3', 'cr4', 'cr8']
+DO_NOTHING = 0
 
 
 irp_addr = 0x69696900

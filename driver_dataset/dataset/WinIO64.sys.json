@@ -1,0 +1,140 @@
+{
+    "basic": {
+        "path": "driver_dataset/dataset/WinIO64.sys",
+        "time": {
+            "ioctl handler": 0,
+            "hunting vulns": 4
+        },
+        "memory": {
+            "ioctl handler": 3072,
+            "hunting vulns": 141056
+        },
+        "unique addr": {
+            "ioctl handler": 66,
+            "hunting vulns": 279
+        },
+        "DeviceName": [
+            "\\Device\\WinIo"
+        ],
+        "SymbolicLink": [
+            "\\DosDevices\\WinIo"
+        ],
+        "ioctl handler": "0x1400012f8",
+        "IoControlCodes": [
+            "0x80102044",
+            "0x80102054",
+            "0x80102050",
+            "0x80102040"
+        ]
+    },
+    "vuln": [
+        {
+            "title": "buffer overflow",
+            "description": "memcpy/memmove",
+            "state": "<SimState @ 0x140001600>",
+            "parameters": {
+                "dest": "<BV64 0x7fffffffffeff68>",
+                "src": "<BV64 SystemBuffer_11_64>",
+                "size": "<BV64 0x0 .. InputBufferLength_17_32>"
+            },
+            "eval": {
+                "IoControlCode": "0x80102044",
+                "SystemBuffer": "0x0",
+                "Type3InputBuffer": "0x0",
+                "UserBuffer": "0x0",
+                "InputBufferLength": "0xffffffff",
+                "OutputBufferLength": "0x0"
+            },
+            "others": {
+                "return address": "0x140001429"
+            }
+        },
+        {
+            "title": "buffer overflow",
+            "description": "memcpy/memmove",
+            "state": "<SimState @ 0x140001600>",
+            "parameters": {
+                "dest": "<BV64 0x7fffffffffeff60>",
+                "src": "<BV64 SystemBuffer_11_64>",
+                "size": "<BV64 0x0 .. InputBufferLength_17_32>"
+            },
+            "eval": {
+                "IoControlCode": "0x80102054",
+                "SystemBuffer": "0x0",
+                "Type3InputBuffer": "0x0",
+                "UserBuffer": "0x0",
+                "InputBufferLength": "0xffffffff",
+                "OutputBufferLength": "0x0"
+            },
+            "others": {
+                "return address": "0x140001384"
+            }
+        },
+        {
+            "title": "buffer overflow",
+            "description": "memcpy/memmove",
+            "state": "<SimState @ 0x140001600>",
+            "parameters": {
+                "dest": "<BV64 0x7fffffffffeff60>",
+                "src": "<BV64 SystemBuffer_11_64>",
+                "size": "<BV64 0x0 .. InputBufferLength_17_32>"
+            },
+            "eval": {
+                "IoControlCode": "0x80102050",
+                "SystemBuffer": "0x0",
+                "Type3InputBuffer": "0x0",
+                "UserBuffer": "0x0",
+                "InputBufferLength": "0xffffffff",
+                "OutputBufferLength": "0x0"
+            },
+            "others": {
+                "return address": "0x1400013d5"
+            }
+        },
+        {
+            "title": "buffer overflow",
+            "description": "memcpy/memmove",
+            "state": "<SimState @ 0x140001600>",
+            "parameters": {
+                "dest": "<BV64 0x7fffffffffeff68>",
+                "src": "<BV64 SystemBuffer_11_64>",
+                "size": "<BV64 0x0 .. InputBufferLength_17_32>"
+            },
+            "eval": {
+                "IoControlCode": "0x80102040",
+                "SystemBuffer": "0x0",
+                "Type3InputBuffer": "0x0",
+                "UserBuffer": "0x0",
+                "InputBufferLength": "0xffffffff",
+                "OutputBufferLength": "0x0"
+            },
+            "others": {
+                "return address": "0x14000145c"
+            }
+        },
+        {
+            "title": "map physical memory",
+            "description": "ZwMapViewOfSection - map \\Device\\PhysicalMemory",
+            "state": "<SimState @ 0x140100040>",
+            "parameters": {
+                "SectionHandle": "<BV64 ZwOpenSection_0x14000113d_47_64>",
+                "ProcessHandle": "<BV64 0xffffffffffffffff>",
+                "BaseAddress": "<BV64 0x7fffffffffefeb8>",
+                "CommitSize": "<BV64 *<BV64 SystemBuffer_11_64>_45_4096[63:0]>",
+                "ViewSize": "<BV64 0x7fffffffffeff38>"
+            },
+            "eval": {
+                "IoControlCode": "0x80102040",
+                "SystemBuffer": "0x44590000",
+                "Type3InputBuffer": "0x0",
+                "UserBuffer": "0x0",
+                "InputBufferLength": "0xffffffff",
+                "OutputBufferLength": "0x0"
+            },
+            "others": {
+                "return address": "0x140001227"
+            }
+        }
+    ],
+    "error": []
+}

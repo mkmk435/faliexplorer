@@ -10,13 +10,63 @@ import globals
 #   [in] PUNICODE_STRING DeviceName
 # );
 # printa e basta il symbolic link name e il device namex``
+# class HookIoCreateSymbolicLink(angr.SimProcedure):
+#     def run(self, SymbolicLinkName, DeviceName):
+
+#         device_name = utils.read_buffer_from_unicode_string(self.state, DeviceName)
+#         print("device_name: ", device_name)
+#         symbolic_link_name = utils.read_buffer_from_unicode_string(self.state, SymbolicLinkName)
+#         print("symbolic_link_name: ", symbolic_link_name)
+#         return 0
 class HookIoCreateSymbolicLink(angr.SimProcedure):
     def run(self, SymbolicLinkName, DeviceName):
+        # Retrieve the symbolic link name.
+        device_name_str = utils.read_buffer_from_unicode_string(self.state, DeviceName)
+        if (device_name_str == "") or (device_name_str is None):
+            return 0
+        
+        symbolic_link_str = utils.read_buffer_from_unicode_string(self.state, SymbolicLinkName)
+        if (symbolic_link_str == "") and (symbolic_link_str == None):
+            return 0
+        
+        print(f'Symbolic link \"{symbolic_link_str}\" to \"{device_name_str}\"')
 
-        device_name = utils.read_buffer_from_unicode_string(self.state, DeviceName)
-        print("device_name: ", device_name)
-        symbolic_link_name = utils.read_buffer_from_unicode_string(self.state, SymbolicLinkName)
-        print("symbolic_link_name: ", symbolic_link_name)
+        if "SymbolicLink" not in globals.basic_info:
+            globals.basic_info["SymbolicLink"] = []
+
+        if(symbolic_link_str not in globals.basic_info["SymbolicLink"]):
+            globals.basic_info["SymbolicLink"].append(symbolic_link_str)
+        return 0    
+
+
+class HookIoCreateDevice(angr.SimProcedure):
+    def run(self, DriverObject, DeviceExtensionSize, DeviceName, DeviceType, DeviceCharacteristics, Exclusive, DeviceObject):
+        # Initialize device object.
+        devobjaddr = utils.next_base_addr()
+        self.state.globals['device_object_addr'] = devobjaddr
+        device_object = claripy.BVS('device_object', 8 * 0x400)
+        self.state.memory.store(devobjaddr, device_object, 0x400, disable_actions=True, inspect=False)
+        self.state.mem[devobjaddr].DEVICE_OBJECT.Flags = 0
+        self.state.mem[DeviceObject].PDEVICE_OBJECT = devobjaddr
+
+        # Initialize device extension.
+        new_device_extension_addr = utils.next_base_addr()
+        size = self.state.solver.min(DeviceExtensionSize)
+        device_extension = claripy.BVV(0, 8 * size)
+        self.state.memory.store(new_device_extension_addr, device_extension, size, disable_actions=True, inspect=False)
+        self.state.mem[devobjaddr].DEVICE_OBJECT.DeviceExtension = new_device_extension_addr
+
+        # Retrieve the device name.
+        device_name_str = utils.read_buffer_from_unicode_string(self.state, DeviceName)
+        if (device_name_str == "") or (device_name_str == None):
+            return 0
+        
+        # utils.print_info(f'device name: {device_name_str}')
+        if "DeviceName" not in globals.basic_info:
+            globals.basic_info["DeviceName"] = []
+        
+        if(device_name_str not in globals.basic_info["DeviceName"]):
+            globals.basic_info["DeviceName"].append(device_name_str)
         return 0
 
 # NTSYSAPI NTSTATUS ZwOpenSection(
@@ -177,6 +227,7 @@ class HookRtlInitUnicodeString(angr.SimProcedure):
         # inizializza la dest String, alloca in indirizzo nuovo una stringa unicode
         byte_length = string_orig.length // 8
         new_buffer = utils.next_base_addr()
+        print(f'RtlInitUnicodeString - initialize unicode string at {hex(new_buffer)} with length {byte_length} bytes')
 
         # Scrivo nel buffer la stringa che ho letto prima (o che ho creato come BVS)
         self.state.memory.store(new_buffer, string_orig, byte_length, disable_actions=True, inspect=False)
@@ -193,6 +244,29 @@ class HookRtlInitUnicodeString(angr.SimProcedure):
         if (not SourceString.symbolic and utils.tainted_buffer(self.state.memory.load(SourceString, 0x10, disable_actions=True, inspect=False))) or utils.tainted_buffer(SourceString) or str(SourceString) in self.state.globals['tainted_unicode_strings']:
             self.state.globals['tainted_unicode_strings'] += (str(unistr.Buffer.resolved), )
 
+        return 0
+class HookRtlCopyUnicodeString(angr.SimProcedure):
+    def run(self, DestinationString, SourceString):
+        # Restrict the length of the unicode string.
+        src_unistr = self.state.mem[SourceString].struct._UNICODE_STRING
+        src_len = src_unistr.Length
+        conc_src_len = self.state.solver.min(src_len.resolved)
+        self.state.solver.add(src_len.resolved == conc_src_len)
+
+        dst_unistr = self.state.mem[DestinationString].struct._UNICODE_STRING
+        dst_maxi_len = src_unistr.MaximumLength
+        conc_dst_max_len = self.state.solver.min(dst_maxi_len.resolved)
+        self.state.solver.add(dst_maxi_len.resolved == conc_dst_max_len)
+
+        # Copy the unicode string.
+        memcpy = angr.procedures.SIM_PROCEDURES['libc']['memcpy']
+        self.inline_call(memcpy, dst_unistr.Buffer.resolved, src_unistr.Buffer.resolved, min(conc_src_len, conc_dst_max_len))
+
+        # Store the unicode string if it is tainted.
+        if utils.tainted_buffer(SourceString) or str(SourceString) in self.state.globals['tainted_unicode_strings']:
+            self.state.globals['tainted_unicode_strings'] += (str(dst_unistr.Buffer.resolved), )
+
+        return 0
 
 # Scrivi in translated address il valore di BusNumber + BusAddress 
 # Serve perche' per 'propagare' il valore di BusNumber e BusAddress al di fuori della funzione, 
@@ -235,7 +309,7 @@ class HookIoStartPacket(angr.SimProcedure):
 class HookExAllocatePoolWithTag(angr.SimProcedure):
     def run(self, PoolType, NumberOfBytes, Tag):
         if globals.phase == 2:
-            print("Dentro ExAllocatePoolWithTag Function hook")
+            # print("Dentro ExAllocatePoolWithTag Function hook")
             if utils.tainted_buffer(NumberOfBytes):
                 utils.print_vuln('allocate pool', 'ExAllocatePoolWithTag - NumberOfBytes controllable', self.state, {'PoolType': str(PoolType), 'NumberOfBytes': str(NumberOfBytes), 'Tag': str(Tag)})
 
@@ -301,7 +375,7 @@ class HookExFreePoolWithTag(angr.SimProcedure):
     def run(self, P, Tag):
         # Controllo se il buffer liberato da ExFreePoolWithTag e' controllabile
         if globals.phase == 2:
-            print("Dentro ExFreePoolWithTagP: ", P)
+            # print("Dentro ExFreePoolWithTagP: ", P)
             if utils.tainted_buffer(P):
                 utils.print_vuln('free pool', 'ExFreePoolWithTag - buffer controllable', self.state, {'P': str(P), 'Tag': str(Tag)}, {'return address': hex(self.state.callstack.ret_addr)})
 
@@ -460,3 +534,8 @@ class HookMmIsAddressValid(angr.SimProcedure):
         #         # ret_addr = hex(self.state.callstack.ret_addr)
         #         self.state.globals['tainted_MmIsAddressValid'] += (str(target_base), )
         return 1
+    
+
+class HookDoNothing(angr.SimProcedure):
+    def run(self):
+        return 0

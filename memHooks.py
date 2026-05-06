@@ -288,20 +288,18 @@ def b_mem_write(state):
 def b_call(state):
     ret_addr = state.solver.eval(state.memory.load(state.regs.rsp, state.arch.bytes, endness=state.arch.memory_endness))
     # utils.print_debug(f'call: state: {state}, ret_addr: {hex(ret_addr)}, function addr: {state.inspect.function_address})')
+
     # Check if the function address to call is tainted.
-    args = [state.solver.eval(arg) for arg in state.inspect.call_arguments]
-    print(args)
     if utils.tainted_buffer(state.inspect.function_address):
         state.regs.rip = 0x1337
-        # utils.print_vuln('arbitrary shellcode execution', '', state, {}, {'function address': str(state.inspect.function_address), 'return address': hex(ret_addr)})
-        
+        utils.print_vuln('arbitrary shellcode execution', '', state, {}, {'function address': str(state.inspect.function_address), 'return address': hex(ret_addr)})
+    
     # If the number of function address evaluated is more than 1, skip the call.
     if len(state.solver.eval_upto(state.inspect.function_address, 2)) > 1:
         tmp_state = state.copy()
         tmp_state.regs.rip = globals.DO_NOTHING
         globals.simgr.deferred.append(tmp_state)
         return angr.SIM_PROCEDURES['stubs']['ReturnUnconstrained']().execute(state)
-    
 
 def inspect_args_hook(state):
     # # 1. Get the default calling convention for the binary's architecture
@@ -337,3 +335,18 @@ def inspect_args_hook(state):
     #     val = state.memory.load(arg_addr, word_size, endness=state.arch.memory_endness)
     #     print(f"Stack Arg {i} [@ {arg_addr}]: {val}")
     pass
+
+
+def b_write_ioctl_handler(state):
+        # Store the address of ioctl handler when writing into the memory.
+    ioctl_handler_addr = state.solver.eval(state.inspect.mem_write_expr)
+    globals.ioctl_handler = ioctl_handler_addr
+    state.globals['ioctl_handler'] = ioctl_handler_addr
+    globals.simgr.move(from_stash='deadended', to_stash='_Drop')
+
+def b_mem_write_DriverStartIo(state):
+    # Store the address of DriverStartIo when writing into the memory.
+    DriverStartIo_addr = state.solver.eval(state.inspect.mem_write_expr)
+    globals.DriverStartIo = int(DriverStartIo_addr)
+    globals.basic_info['DriverStartIo'] = hex(globals.DriverStartIo)
+    print(f'DriverStartIo: {hex(globals.DriverStartIo)}')

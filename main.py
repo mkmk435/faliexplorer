@@ -163,14 +163,14 @@ def hookDriver(driver_path):
 
     globals.cfg = globals.proj.analyses.CFGFast()
     # globals.cfg = globals.proj.analyses.CFGEmulated(keep_state=True)
-    globals.proj.analyses.CompleteCallingConventions(
-        recover_variables=True, 
-        cfg=globals.cfg,
-        analyze_callsites=True   # <-- helps with custom functions
-    )
+    # globals.proj.analyses.CompleteCallingConventions(
+    #     recover_variables=True, 
+    #     cfg=globals.cfg,
+    #     analyze_callsites=True   # <-- helps with custom functions
+    # )
     # Run CompleteCallingConventionsAnalysis on all functions to recover prototypes
-    print("Analyzing calling conventions for all functions...")
-    globals.proj.analyses.CompleteCallingConventions(recover_variables=True, cfg=globals.cfg)
+    # print("Analyzing calling conventions for all functions...")
+    # globals.proj.analyses.CompleteCallingConventions(recover_variables=True, cfg=globals.cfg)
 
     hook_dangerous_asm(driver_path)
 
@@ -178,16 +178,21 @@ def hookDriver(driver_path):
     #necessario per se vengono usate
     utils.find_hook_func()
 
+    globals.DO_NOTHING = utils.next_base_addr()
+    globals.proj.hook(globals.DO_NOTHING, apiHooks.HookDoNothing(cc=globals.cc))
 
     globals.proj.hook_symbol('memmove', apiHooks.HookMemcpy(cc=globals.cc))
     globals.proj.hook_symbol('memcpy', apiHooks.HookMemcpy(cc=globals.cc))
     globals.proj.hook_symbol('ZwOpenSection', apiHooks.HookZwOpenSection(cc=globals.cc))
     globals.proj.hook_symbol('RtlInitUnicodeString', apiHooks.HookRtlInitUnicodeString(cc=globals.cc))
+    globals.proj.hook_symbol('RtlCopyUnicodeString', apiHooks.HookRtlCopyUnicodeString(cc=globals.cc))
+
     globals.proj.hook_symbol('HalTranslateBusAddress', apiHooks.HookHalTranslateBusAddress(cc=globals.cc))
     globals.proj.hook_symbol('IoStartPacket', apiHooks.HookIoStartPacket(cc=globals.cc))
     globals.proj.hook_symbol('PsLookupProcessByProcessId', apiHooks.HookPsLookupProcessByProcessId(cc=globals.cc))
     globals.proj.hook_symbol('ObOpenObjectByPointer', apiHooks.HookObOpenObjectByPointer(cc=globals.cc))
     globals.proj.hook_symbol('IoCreateSymbolicLink', apiHooks.HookIoCreateSymbolicLink(cc=globals.cc))
+    globals.proj.hook_symbol('IoCreateDevice', apiHooks.HookIoCreateDevice(cc=globals.cc))
 
     
     globals.proj.hook_symbol('ProbeForRead', apiHooks.HookProbeForRead(cc=globals.cc))
@@ -206,6 +211,8 @@ def hookDriver(driver_path):
     globals.proj.hook_symbol("ExFreePool2", apiHooks.HookExFreePool2(cc=globals.cc))
     globals.proj.hook_symbol("ExFreePool", apiHooks.HookExFreePool(cc=globals.cc))
 
+    globals.ps_process_type = utils.resolve_import_symbol_in_object(globals.proj.loader.main_object, "PsProcessType")
+
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
@@ -217,6 +224,7 @@ if __name__ == "__main__":
     parser.add_argument('-l', '--length', type=int, default=0, help='the limit of number of instructions for technique LengthLimiter (default 0, 0 to unlimited)')
     parser.add_argument('-b', '--bound', type=int, default=0, help='the bound for technique LoopSeer (default 0, 0 to unlimited)')
     parser.add_argument('-i', '--ioctlcode', nargs='*', default=[], help='analyze specified IoControlCode(s) (e.g. 22201c 222020 222024). If not specified, all will be analyzed')
+    parser.add_argument('-c', '--complete', default=False, action='store_true', help='only report vulnerabilities with complete execution paths to STATUS_SUCCESS (default False)')
     globals.args = parser.parse_args()
 
     driver = globals.args.path

@@ -1,0 +1,104 @@
+{
+    "basic": {
+        "path": "driver_dataset/dataset/AppShopDrv103.sys",
+        "time": {
+            "ioctl handler": 1,
+            "hunting vulns": 86
+        },
+        "memory": {
+            "ioctl handler": 39936,
+            "hunting vulns": 443760
+        },
+        "unique addr": {
+            "ioctl handler": 142,
+            "hunting vulns": 604
+        },
+        "SymbolicLink": [
+            "\\DosDevices\\AppShopDrv103"
+        ],
+        "ioctl handler": "0x11324",
+        "IoControlCodes": [
+            "0x22e858",
+            "0x22e860",
+            "0x22e800",
+            "0x22e804",
+            "0x22ec00"
+        ]
+    },
+    "vuln": [
+        {
+            "title": "null pointer dereference - input buffer",
+            "description": "read input buffer",
+            "state": "<SimState @ 0x11f7c>",
+            "parameters": {},
+            "eval": {
+                "IoControlCode": "0x22e858",
+                "SystemBuffer": "0x0",
+                "Type3InputBuffer": "0x0",
+                "UserBuffer": "0x0",
+                "InputBufferLength": "0x0",
+                "OutputBufferLength": "0x0"
+            },
+            "others": {
+                "read from": "<BV64 SystemBuffer_18_64>"
+            }
+        },
+        {
+            "title": "null pointer dereference - input buffer",
+            "description": "read input buffer",
+            "state": "<SimState @ 0x12534>",
+            "parameters": {},
+            "eval": {
+                "IoControlCode": "0x22e860",
+                "SystemBuffer": "0x0",
+                "Type3InputBuffer": "0x0",
+                "UserBuffer": "0x0",
+                "InputBufferLength": "0x0",
+                "OutputBufferLength": "0x0"
+            },
+            "others": {
+                "read from": "<BV64 SystemBuffer_18_64>"
+            }
+        },
+        {
+            "title": "map physical memory",
+            "description": "MmMapIoSpace - PhysicalAddress controllable",
+            "state": "<SimState @ 0x100028>",
+            "parameters": {
+                "PhysicalAddress": "<BV64 0x0 .. *<BV64 SystemBuffer_18_64>_483_4096[31:0]>",
+                "NumberOfBytes": "<BV64 0x1000>"
+            },
+            "eval": {
+                "IoControlCode": "0x22e860",
+                "SystemBuffer": "0x44580000",
+                "Type3InputBuffer": "0x0",
+                "UserBuffer": "0x0",
+                "InputBufferLength": "0x0",
+                "OutputBufferLength": "0x0"
+            },
+            "others": {
+                "return address": "0x1255a"
+            }
+        },
+        {
+            "title": "null pointer dereference - input buffer",
+            "description": "read input buffer",
+            "state": "<SimState @ 0x113c4>",
+            "parameters": {},
+            "eval": {
+                "IoControlCode": "0x22ec00",
+                "SystemBuffer": "0x0",
+                "Type3InputBuffer": "0x0",
+                "UserBuffer": "0x0",
+                "InputBufferLength": "0x0",
+                "OutputBufferLength": "0x0"
+            },
+            "others": {
+                "read from": "<BV64 SystemBuffer_18_64 + 0x2>"
+            }
+        }
+    ],
+    "error": [
+        "<State errored with \"Unable to concretize address for store with the provided strategies.\">"
+    ]
+}
