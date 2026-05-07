@@ -207,7 +207,7 @@ def b_mem_write(state):
                     # Add constraints to test whether the pointer is null or not.
                     tmp_state = state.copy()
                     tmp_state2 = state.copy()
-                    
+                    tmp_state3 = state.copy()
                     if target == 'SystemBuffer':
                         # Check se si sta accedendo a qualcosa dereferenziato da system buffer
                         if '*' in str(state.inspect.mem_write_address):

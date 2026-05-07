@@ -9,15 +9,7 @@ import globals
 #   [in] PUNICODE_STRING SymbolicLinkName,
 #   [in] PUNICODE_STRING DeviceName
 # );
-# printa e basta il symbolic link name e il device namex``
-# class HookIoCreateSymbolicLink(angr.SimProcedure):
-#     def run(self, SymbolicLinkName, DeviceName):
-
-#         device_name = utils.read_buffer_from_unicode_string(self.state, DeviceName)
-#         print("device_name: ", device_name)
-#         symbolic_link_name = utils.read_buffer_from_unicode_string(self.state, SymbolicLinkName)
-#         print("symbolic_link_name: ", symbolic_link_name)
-#         return 0
+# printa e basta il symbolic link name e il device name
 class HookIoCreateSymbolicLink(angr.SimProcedure):
     def run(self, SymbolicLinkName, DeviceName):
         # Retrieve the symbolic link name.
@@ -39,6 +31,8 @@ class HookIoCreateSymbolicLink(angr.SimProcedure):
         return 0    
 
 
+# alloca device obj in indirizzo, e crea un device object simbolico che mettera' a quell' indirizzo, poi filla alcuni campi
+#
 class HookIoCreateDevice(angr.SimProcedure):
     def run(self, DriverObject, DeviceExtensionSize, DeviceName, DeviceType, DeviceCharacteristics, Exclusive, DeviceObject):
         # Initialize device object.
@@ -95,6 +89,7 @@ class HookZwOpenSection(angr.SimProcedure):
         self.state.globals['open_section_handles'] += ((handle, object_name),)
         return 0
 
+# hook che controlla se posso mappare memoria fisica in modo arbitrario/semi arbitrario
 class HookZwMapViewOfSection(angr.SimProcedure):
     def run(self, SectionHandle, ProcessHandle, BaseAddress, ZeroBits, CommitSize, SectionOffset, ViewSize, InheritDisposition, AllocationType, Win32Protect):
         # if globals.phase == 2:
@@ -122,6 +117,7 @@ class HookZwMapViewOfSection(angr.SimProcedure):
 #   [in] SIZE_T              NumberOfBytes,
 #   [in] MEMORY_CACHING_TYPE CacheType
 # );
+# Semplice hook per vedere se posso controllare indirizzo fisico da mapparmi o il numero di bytes da mappare, o entrambi
 class HookMmMapIoSpace(angr.SimProcedure):
     def run(self, PhysicalAddress, NumberOfBytes, CacheType):
         # Controllo se i parametri di MmMapIoSpace sono controllabili uno per uno
@@ -150,11 +146,13 @@ class HookMmMapIoSpaceEx(angr.SimProcedure):
         elif utils.tainted_buffer(NumberOfBytes):
             utils.print_vuln('map physical memory', 'MmMapIoSpaceEx - NumberOfBytes controllable', self.state, {'PhysicalAddress': str(PhysicalAddress), 'NumberOfBytes': str(NumberOfBytes), 'Protect': str(Protect)})
 
-
+        return 0
+    
 # NTSTATUS PsLookupProcessByProcessId(
 #   [in]  HANDLE    ProcessId,
 #   [out] PEPROCESS *Process
 # );
+# Semplice hook per vedere se posso controlalre il ProcessID, e quindi fillo l'eprocess con un valore simbolico
 class HookPsLookupProcessByProcessId(angr.SimProcedure):
     def run(self, ProcessId, Process):
         if utils.tainted_buffer(ProcessId):
@@ -227,7 +225,7 @@ class HookRtlInitUnicodeString(angr.SimProcedure):
         # inizializza la dest String, alloca in indirizzo nuovo una stringa unicode
         byte_length = string_orig.length // 8
         new_buffer = utils.next_base_addr()
-        print(f'RtlInitUnicodeString - initialize unicode string at {hex(new_buffer)} with length {byte_length} bytes')
+        # print(f'RtlInitUnicodeString - initialize unicode string at {hex(new_buffer)} with length {byte_length} bytes')
 
         # Scrivo nel buffer la stringa che ho letto prima (o che ho creato come BVS)
         self.state.memory.store(new_buffer, string_orig, byte_length, disable_actions=True, inspect=False)
@@ -245,6 +243,8 @@ class HookRtlInitUnicodeString(angr.SimProcedure):
             self.state.globals['tainted_unicode_strings'] += (str(unistr.Buffer.resolved), )
 
         return 0
+    
+# Semplice hook, che alla fine chiama memcpy della libc, ma prima estrae le stringhe 
 class HookRtlCopyUnicodeString(angr.SimProcedure):
     def run(self, DestinationString, SourceString):
         # Restrict the length of the unicode string.
@@ -275,21 +275,7 @@ class HookHalTranslateBusAddress(angr.SimProcedure):
     def run(self, InterfaceType, BusNumber, BusAddress, AddressSpace, TranslatedAddress):
         self.state.memory.store(TranslatedAddress, BusNumber + BusAddress, self.state.arch.bytes, endness=self.state.arch.memory_endness, disable_actions=True, inspect=False)
         return 1
-# class HookHalTranslateBusAddress(angr.SimProcedure):
-#     def run(self, InterfaceType, BusNumber, BusAddress, AddressSpace, TranslatedAddress):
-#         ret_addr = hex(self.state.callstack.ret_addr)
-#         if utils.tainted_buffer(BusNumber) or utils.tainted_buffer(BusAddress):
-#             # Create a single symbolic value for the translated address
-#             # to avoid accumulating offsets on repeated calls
-#             trans_addr = claripy.BVS(f'HalTranslateBusAddress_{ret_addr}', self.state.arch.bits)
-#             self.state.memory.store(TranslatedAddress, trans_addr, self.state.arch.bytes, 
-#                                     endness=self.state.arch.memory_endness, disable_actions=True, inspect=False)
-#             self.state.globals['tainted_translated_addresses'] += (str(trans_addr),)
-#         else:
-#             self.state.memory.store(TranslatedAddress, BusNumber + BusAddress, 
-#                                     self.state.arch.bytes, endness=self.state.arch.memory_endness, 
-#                                     disable_actions=True, inspect=False)
-#         return 1
+
 
 class HookIoStartPacket(angr.SimProcedure):
     # Call DriverStartIo when IoStartPacket is called.
@@ -444,7 +430,8 @@ class HookExFreePool2(angr.SimProcedure):
                     return
                 
 
-
+# Hook per le operazioni di memset o memcpy
+# Controlla per vari buffer overflows
 class HookMemcpy(angr.SimProcedure):
     def run(self, dest, src, size):
         # print("HookMemcpy - dest: ", dest)
@@ -484,15 +471,20 @@ class HookMemcpy(angr.SimProcedure):
                     if tmp_state2.solver.satisfiable():
                         utils.print_vuln('Stack buffer overflow', 'memcpy - return address controllable', self.state, {'dest': str(dest), 'src': str(src), 'size': str(size)}, {'return address': hex(self.state.callstack.ret_addr)})
                 
+                # Check for memory disclosure, can copy data of arbitrary size inside my buffer
+                elif utils.tainted_buffer(dest):
+                    utils.print_vuln('Memory disclosure', 'memcpy - read out of bound inside my buffer', self.state, {'dest': str(dest), 'src': str(src), 'size': str(size)}, {'return address': hex(self.state.callstack.ret_addr)})
         # 3. Execute the actual memcpy behavior
         angr.procedures.SIM_PROCEDURES['libc']['memcpy'](cc=self.cc).execute(self.state, arguments=(dest, src, size))
 
         return 0
+    
 # VOID ProbeForRead(
 #   [in] const volatile VOID *Address,
 #   [in] SIZE_T              Length,
 #   [in] ULONG               Alignment
 # );
+# Segna l'indirizzo probato, cosi' sapremo se la vulnerabilita' e' vera o falso positivo
 class HookProbeForRead(angr.SimProcedure):
     def run(self, Address, Length, Alignment):
         if globals.phase == 2:
@@ -510,6 +502,7 @@ class HookProbeForRead(angr.SimProcedure):
 #   [in]      SIZE_T        Length,
 #   [in]      ULONG         Alignment
 # );
+# Segna l'indirizzo probato, cosi' sapremo se la vulnerabilita' e' vera o falso positivo
 class HookProbeForWrite(angr.SimProcedure):
     def run(self, Address, Length, Alignment):
         if globals.phase == 2:
@@ -535,6 +528,7 @@ class HookMmIsAddressValid(angr.SimProcedure):
         #         self.state.globals['tainted_MmIsAddressValid'] += (str(target_base), )
         return 1
     
+
 
 class HookDoNothing(angr.SimProcedure):
     def run(self):
