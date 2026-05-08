@@ -220,7 +220,7 @@ class HookRtlInitUnicodeString(angr.SimProcedure):
                 raise
             string_orig = self.state.mem[SourceString].wstring.resolved
         except:
-            string_orig = claripy.concat(claripy.BVS(f"RtlInitUnicodeString_{ret_addr}", 8 * 10), claripy.BVV(0, 16))
+            string_orig = claripy.Concat(claripy.BVS(f"RtlInitUnicodeString_{ret_addr}", 8 * 10), claripy.BVV(0, 16))
 
         # inizializza la dest String, alloca in indirizzo nuovo una stringa unicode
         byte_length = string_orig.length // 8
@@ -388,21 +388,26 @@ class HookExFreePool(angr.SimProcedure):
     def run(self, P):
         # Controllo se il buffer liberato da ExFreePoolWithTag e' controllabile
         if globals.phase == 2:
-            print("Dentro ExFreePoolWithTagP: ", P)
+            # print("Dentro ExFreePoolWithTagP: ", P)
             if utils.tainted_buffer(P):
                 utils.print_vuln('free pool', 'ExFreePool - buffer controllable', self.state, {'P': str(P)}, {'return address': hex(self.state.callstack.ret_addr)})
 
-            if P in globals.freed_set:
+            # if P in globals.freed_set:
+                
+            if str(P) in self.state.globals['freed_buffers']:
                 utils.print_vuln('double free', 'ExFreePool - buffer already freed', self.state, {'P': str(P)}, {'return address': hex(self.state.callstack.ret_addr)})
             else:
                 # Add to freed set
-                globals.freed_set.add(P)
+                self.state.globals['freed_buffers'].append(str(P))
+                # globals.freed_set.add(P)
                 # Remove from active buffers
-
-                if P in globals.active_buffers:
-                    print("Freeing buffer: ", P)
-                    del globals.active_buffers[P]
-                    return
+                for active_buf in self.state.globals['active_buffers']:
+                        
+                    if str(P) == active_buf[0]:
+                        print("Freeing buffer: ", P)
+                        self.state.globals['active_buffers'].remove(active_buf)
+                        return
+                
                         
 # VOID ExFreePool2(
 #   [in]           PVOID                     P,
@@ -412,23 +417,28 @@ class HookExFreePool(angr.SimProcedure):
 # );
 class HookExFreePool2(angr.SimProcedure):
     def run(self, P, Tag, ExtendedParameters, ExtendedParametersCount):
-         # Controllo se il buffer liberato da ExFreePoolWithTag e' controllabile
+        # Controllo se il buffer liberato da ExFreePoolWithTag e' controllabile
         if globals.phase == 2:
             # print("Dentro ExFreePoolWithTagP: ", P)
             if utils.tainted_buffer(P):
                 utils.print_vuln('free pool', 'ExFreePool2 - buffer controllable', self.state, {'P': str(P), 'Tag': str(Tag), 'ExtendedParameters': str(ExtendedParameters), 'ExtendedParametersCount': str(ExtendedParametersCount)}, {'return address': hex(self.state.callstack.ret_addr)})
 
-            if P in globals.freed_set:
+            # if P in globals.freed_set:
+                
+            if str(P) in self.state.globals['freed_buffers']:
                 utils.print_vuln('double free', 'ExFreePool2 - buffer already freed', self.state, {'P': str(P), 'Tag': str(Tag)}, {'return address': hex(self.state.callstack.ret_addr)})
             else:
                 # Add to freed set
-                globals.freed_set.add(P)
+                self.state.globals['freed_buffers'].append(str(P))
+                # globals.freed_set.add(P)
                 # Remove from active buffers
-
-                if P in globals.active_buffers:
-                    print("Freeing buffer: ", P)
-                    del globals.active_buffers[P]
-                    return
+                for active_buf in self.state.globals['active_buffers']:
+                        
+                    if str(P) == active_buf[0]:
+                        print("Freeing buffer: ", P)
+                        self.state.globals['active_buffers'].remove(active_buf)
+                        return
+                
                 
 
 # Hook per le operazioni di memset o memcpy

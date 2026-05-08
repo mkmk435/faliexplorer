@@ -67,9 +67,67 @@ def disasm_file(file_path):
 
     return instruction_list, text_list
 
+def detect_driver_framework(driver_path: str) -> str:
+    """
+    Best-effort classification for a Windows kernel driver framework.
+    Returns one of: "kmdf/wdf", "wdm", "unknown".
+    """
+    try:
+        pe = pefile.PE(driver_path)
+    except Exception:
+        return "unknown"
+
+    imports = set()
+    imported_dlls = set()
+
+    if hasattr(pe, "DIRECTORY_ENTRY_IMPORT"):
+        for entry in pe.DIRECTORY_ENTRY_IMPORT:
+            dll_name = entry.dll.decode("utf-8", errors="ignore").lower()
+            imported_dlls.add(dll_name)
+
+            for imp in entry.imports:
+                if imp.name:
+                    imports.add(imp.name.decode("utf-8", errors="ignore").lower())
+
+    # Strong KMDF/WDF indicators:
+    # - Imports from Wdf01000 (framework runtime)
+    # - Wdf* APIs (WdfDriverCreate, WdfDeviceCreate, etc.)
+    if "wdf01000.sys" in imported_dlls or "wdfldr.sys" in imported_dlls:
+        return "kmdf/wdf"
+    if any(name.startswith("wdf") for name in imports):
+        return "kmdf/wdf"
+
+    # WDM-style indicator: dispatch table setup via Io* APIs usually seen in DriverEntry.
+    wdm_markers = {
+        "iocreatedevice",
+        "iocreatedevicesecure",
+        "iocreatesymboliclink",
+        "iodeletedevice",
+        "iodeletesymboliclink",
+    }
+    if imports.intersection(wdm_markers):
+        return "wdm"
+
+    return "unknown"
+
 
 def fixup_import_symbols(state):
     globals.star_ps_process_type = fix_object_type_import(state, "PsProcessType", globals.ps_process_type)
+
+# List of functions that commonly derail WDF/WDM symbolic execution
+    stub_functions = [
+        'WdfVersionBind',
+        'WdfVersionBindClass',
+        'PcInitializeAdapterDriver',
+        'IoCreateSymbolicLink',
+        'IoOpenDriverRegistryKey',
+        'RtlCopyUnicodeString',
+        'RtlAppendUnicodeToString',
+        'RtlInitUnicodeString'
+    ]
+    
+    for func in stub_functions:
+        globals.proj.hook_symbol(func, apiHooks.HookDoNothing(cc=globals.cc))
 
 
 def fix_object_type_import(state: angr.SimState, object_type_name: str, object_type_import):    
@@ -187,7 +245,6 @@ def find_ioctl_handler(driver_path):
         driver_object_addr = next_base_addr()
         # device_object_addr = next_base_addr()
         registry_path_addr = next_base_addr()
-        
         state = globals.proj.factory.call_state(
             globals.proj.entry,
             driver_object_addr,
@@ -210,7 +267,7 @@ def find_ioctl_handler(driver_path):
         globals.simgr.use_technique(angr.exploration_techniques.DFS())
 
         # globals.simgr.use_technique(angr.exploration_techniques.LoopSeer(cfg=globals.cfg, functions=None, bound=globals.args.bound))
-        # globals.simgr.use_technique(angr.exploration_techniques.LocalLoopSeer(bound=globals.args.bound))
+        #globals.simgr.use_technique(angr.exploration_techniques.LocalLoopSeer(bound=globals.args.bound))
         # globals.simgr.use_technique(angr.exploration_techniques.LengthLimiter(globals.args.length))
 
 
@@ -252,16 +309,309 @@ def find_ioctl_handler(driver_path):
             for s in globals.simgr.errored:
                 print(f'ERROR: {repr(s)}')
 
-        # Return the ioctl handler address and the state.
+        # Return the ioctl handler address and a usable state.
         if len(globals.simgr.found):
             success_state = globals.simgr.found[0]
             return globals.ioctl_handler, success_state
-        else:
-            return globals.ioctl_handler, None
+        if globals.ioctl_handler:
+            for stash_name in ("active", "deferred", "deadended", "_Drop"):
+                stash = getattr(globals.simgr, stash_name, None)
+                if stash and len(stash):
+                    return globals.ioctl_handler, stash[0]
+        return globals.ioctl_handler, None
     except Exception as e:
         print(f'Error in find_ioctl_handler: {str(e)}')
         traceback.print_exc()
         return None, None
+
+# def find_ioctl_handler_wdf(driver_path):
+#     print("WDF driver detected, using heuristics to find IOCTL handler")
+#     total_instr, text_instr = disasm_file(driver_path)
+
+#     driver_object_addr = next_base_addr()
+#     registry_path_addr = next_base_addr()
+    
+#     state = globals.proj.factory.call_state(
+#         globals.proj.entry, 
+#         driver_object_addr, 
+#         registry_path_addr, 
+#         cc=globals.cc
+#     )
+
+#     state.globals['open_section_handles'] = ()
+#     state.globals['tainted_unicode_strings'] = ()
+#     state.globals['ioctl_handler'] = 0
+#     fixup_import_symbols(state)
+    
+#     target_instr = None
+#     for x, instr in enumerate(total_instr):
+#         if instr.mnemonic == 'mov':
+#             # Looking for MajorFunction[14] / IRP_MJ_DEVICE_CONTROL assignment (0xe0 offset)
+#             if '[rbx + 0xe0]' in instr.op_str:
+#                 target_reg = instr.op_str.split(',')[-1].strip()
+#                 if target_reg == 'rax':
+#                     print(f"Found at {hex(instr.address)}, register: {target_reg}")
+#                     print(f"Instruction: {instr.mnemonic} {instr.op_str}")
+#                     target_instr = (instr, target_reg, x)
+#                     # break # Good practice to break once found
+#             elif '[rdi + 0xe0]' in instr.op_str:
+#                 target_reg = instr.op_str.split(',')[-1].strip()
+#                 if target_reg == 'rcx':
+#                     print(f"Found at {hex(instr.address)}, register: {target_reg}")
+#                     print(f"Instruction: {instr.mnemonic} {instr.op_str}")
+#                     target_instr = (instr, target_reg, x)
+#                     # break # Good practice to break once found
+#     if not target_instr:
+#         print("Could not find IOCTL handler assignment.")
+#         exit(1)
+
+#     globals.simgr = globals.proj.factory.simulation_manager(state)
+#     globals.simgr.explore(find=target_instr[0].address)
+
+#     if globals.simgr.found:
+#         state = globals.simgr.found[0]
+#         print(f"Reached address {hex(target_instr[0].address)}")
+        
+#         # Safely grab the register value and convert AST to concrete Int
+#         reg_value_ast = getattr(state.regs, target_instr[1])
+#         addr_final = state.solver.eval(reg_value_ast)
+        
+#         return addr_final, state
+
+#     else:
+#         print("Not reached")
+#         # exit(1)
+
+#         return target_instr[0].address, None
+def find_ioctl_handler_wdf(driver_path):
+    print("WDF/Heuristic driver detected, using heuristics to find IOCTL handler")
+    try:
+        total_instr, text_instr = disasm_file(driver_path)
+
+        driver_object_addr = next_base_addr()
+        registry_path_addr = next_base_addr()
+        
+        state = globals.proj.factory.call_state(
+            globals.proj.entry, 
+            driver_object_addr, 
+            registry_path_addr, 
+            cc=globals.cc
+        )
+
+        state.globals['open_section_handles'] = ()
+        state.globals['tainted_unicode_strings'] = ()
+        state.globals['ioctl_handler'] = 0
+        fixup_import_symbols(state)
+        
+        # 1. Determine MajorFunction[IRP_MJ_DEVICE_CONTROL] offset dynamically
+        is_64bit = globals.proj.arch.name == angr.archinfo.ArchAMD64.name
+        target_offset = '0xe0' if is_64bit else '0x70'
+        
+        target_instr = None
+        
+        # 2. Robustly parse instructions for ANY register base
+        for x, instr in enumerate(total_instr):
+            if instr.mnemonic.startswith('mov'):
+                op_str = instr.op_str.lower()
+                # Split destination and source operands
+                parts = [p.strip() for p in op_str.split(',')]
+                
+                if len(parts) >= 2:
+                    dst_op = parts[0]
+                    src_op = parts[-1]
+                    
+                    # Look for a memory write to the target offset (e.g., [rax + 0xe0])
+                    if target_offset in dst_op and '[' in dst_op and ']' in dst_op:
+                        # Extract the source register 
+                        target_reg = src_op
+                        
+                        # Ensure the source is a standard register (alphanumeric)
+                        if target_reg.isalnum():
+                            print(f"Found assignment at {hex(instr.address)}, register: {target_reg}")
+                            print(f"Instruction: {instr.mnemonic} {instr.op_str}")
+                            target_instr = (instr, target_reg, x)
+                            break 
+                            
+        if not target_instr:
+            print("Could not find IOCTL handler assignment via static heuristics.")
+            return None, None
+
+        globals.simgr = globals.proj.factory.simulation_manager(state)
+        
+        # 3. Add exploration techniques from the non-WDF function to prevent hangs
+        globals.simgr.use_technique(angr.exploration_techniques.DFS())
+        ed = techniques.ExplosionDetector(threshold=10000)
+        globals.simgr.use_technique(ed)
+
+        # Explore to the identified instruction address
+        globals.simgr.explore(find=target_instr[0].address)
+
+        if globals.simgr.found:
+            success_state = globals.simgr.found[0]
+            print(f"Reached address {hex(target_instr[0].address)}")
+            
+            # Safely grab the register value and convert AST to concrete Int
+            reg_value_ast = getattr(success_state.regs, target_instr[1])
+            addr_final = success_state.solver.eval(reg_value_ast)
+            
+            return addr_final, success_state
+
+        else:
+            print("Target instruction was not reached by symbolic execution.")
+            if globals.simgr.errored:
+                for s in globals.simgr.errored:
+                    print(f'ERROR in state: {repr(s)}')
+            
+            # Return the statically found address anyway, but no state
+            return target_instr[0].address, None
+
+    except Exception as e:
+        print(f'Error in find_ioctl_handler_wdf: {str(e)}')
+        traceback.print_exc()
+        return None, None
+
+
+# def find_ioctl_handler_wdf(driver_path):
+#     # Find IOCTL handler for WDF drivers.
+#     # Primary path: EvtIoDeviceControl callback registered via WdfIoQueueCreate.
+#     # Fallback path: direct write to DriverObject->MajorFunction[IRP_MJ_DEVICE_CONTROL]
+#     # (hybrid KMDF/WDM or PortCls-style drivers may do this and import no WdfIoQueueCreate).
+#     try:
+#         globals.phase = 1
+#         driver_object_addr = next_base_addr()
+#         registry_path_addr = next_base_addr()
+#         state = globals.proj.factory.call_state(
+#             globals.proj.entry,
+#             driver_object_addr,
+#             registry_path_addr,
+#             cc=globals.cc
+#         )
+
+#         state.globals['open_section_handles'] = ()
+#         state.globals['tainted_unicode_strings'] = ()
+#         state.globals['ioctl_handler'] = 0
+#         state.globals['wdf_ioctl_handler_found'] = False
+
+#         fixup_import_symbols(state)
+
+#         wdf_io_queue_create_addr = resolve_import_symbol(globals.proj.loader, "WdfIoQueueCreate")
+#         if not wdf_io_queue_create_addr:
+#             print("WARNING: WdfIoQueueCreate import not found, using dispatch-table fallback")
+
+#         evt_io_device_control_offset = 0x10 + (3 * globals.proj.arch.bytes)
+#         ioctl_major_function_offset = 0xe0 if globals.proj.arch.name == archinfo.ArchAMD64.name else 0x70
+
+#         def b_capture_wdf_ioctl_handler(s):
+#             if s.globals.get('wdf_ioctl_handler_found'):
+#                 return
+
+#             if not wdf_io_queue_create_addr:
+#                 return
+
+#             try:
+#                 call_target = s.solver.eval(s.inspect.function_address)
+#             except Exception:
+#                 return
+
+#             if call_target != wdf_io_queue_create_addr:
+#                 return
+
+#             try:
+#                 if s.arch.name == archinfo.ArchAMD64.name:
+#                     io_queue_config_ptr = s.solver.eval(s.regs.rdx)
+#                 else:
+#                     sp = s.regs.sp
+#                     io_queue_config_ptr = s.solver.eval(
+#                         s.memory.load(sp + s.arch.bytes * 2, s.arch.bytes, endness=s.arch.memory_endness)
+#                     )
+#             except Exception:
+#                 return
+
+#             if io_queue_config_ptr == 0:
+#                 return
+
+#             try:
+#                 evt_handler = s.memory.load(
+#                     io_queue_config_ptr + evt_io_device_control_offset,
+#                     s.arch.bytes,
+#                     endness=s.arch.memory_endness
+#                 )
+#                 evt_handler_addr = s.solver.eval(evt_handler)
+#             except Exception:
+#                 return
+
+#             if evt_handler_addr == 0:
+#                 return
+
+#             globals.ioctl_handler = int(evt_handler_addr)
+#             s.globals['ioctl_handler'] = int(evt_handler_addr)
+#             s.globals['wdf_ioctl_handler_found'] = True
+#             print(f"WDF EvtIoDeviceControl handler: {hex(globals.ioctl_handler)}")
+
+#         # Fallback for hybrid drivers that manually assign IRP_MJ_DEVICE_CONTROL.
+#         state.inspect.b(
+#             'mem_write',
+#             mem_write_address=driver_object_addr + ioctl_major_function_offset,
+#             when=angr.BP_AFTER,
+#             action=memHooks.b_write_ioctl_handler
+#         )
+#         state.inspect.b('call', when=angr.BP_BEFORE, action=memHooks.b_call)
+#         state.inspect.b('call', when=angr.BP_BEFORE, action=b_capture_wdf_ioctl_handler)
+
+#         globals.simgr = globals.proj.factory.simgr(state)
+#         globals.simgr.use_technique(angr.exploration_techniques.DFS())
+
+#         # globals.simgr.use_technique(angr.exploration_techniques.LoopSeer(cfg=globals.cfg, functions=None, bound=globals.args.bound))
+#         #globals.simgr.use_technique(angr.exploration_techniques.LocalLoopSeer(bound=globals.args.bound))
+#         # globals.simgr.use_technique(angr.exploration_techniques.LengthLimiter(globals.args.length))
+
+
+#         ed = techniques.ExplosionDetector(threshold=10000)
+#         globals.simgr.use_technique(ed)
+
+#         def filter_func(s):
+#             # Return false if ioctl handler not found.
+#             if not s.globals['ioctl_handler']:
+#                 return False
+#             # If the complete mode on, we need to keep analyzing until the return value is STATUS_SUCCESS.
+#             if globals.args.complete:
+#                 retval = globals.mycc.return_val(angr.types.BASIC_TYPES['long int']).get_value(s)
+#                 return s.solver.satisfiable(extra_constraints=[retval == 0])
+#             else:
+#                 return True
+
+#         # Start symbolic execution to find the ioctl handler.
+#         for _ in range(0x100000):
+#             try:
+#                 globals.simgr.step(num_inst=1)
+#             except Exception as e:
+#                 print(f'error on state {globals.simgr.active}: {str(e)}')
+#                 globals.simgr.move(from_stash='active', to_stash='_Drop')
+#             globals.simgr.move(from_stash='deadended', to_stash='found', filter_func=filter_func)
+#             if len(globals.simgr.found) or (not len(globals.simgr.active) and not len(globals.simgr.deferred)):
+#                 break
+#         else:
+#             print('ERROR:ioctl handler not found')
+        
+#         if globals.simgr.errored:
+#             for s in globals.simgr.errored:
+#                 print(f'ERROR: {repr(s)}')
+
+#         # Return the ioctl handler address and a usable state.
+#         if len(globals.simgr.found):
+#             success_state = globals.simgr.found[0]
+#             return globals.ioctl_handler, success_state
+#         if globals.ioctl_handler:
+#             for stash_name in ("active", "deferred", "deadended", "_Drop"):
+#                 stash = getattr(globals.simgr, stash_name, None)
+#                 if stash and len(stash):
+#                     return globals.ioctl_handler, stash[0]
+#         return globals.ioctl_handler, None
+#     except Exception as e:
+#         print(f'Error in find_ioctl_handler: {str(e)}')
+#         traceback.print_exc()
+#         return None, None
+
 
 
 def tainted_buffer(buffer):

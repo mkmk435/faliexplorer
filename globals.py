@@ -35,3 +35,5 @@ basic_info = {}
 active_buffers = {}
 
 freed_set = set()
+
+driver_framework = ''

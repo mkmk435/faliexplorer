@@ -227,14 +227,20 @@ if __name__ == "__main__":
     parser.add_argument('-b', '--bound', type=int, default=0, help='the bound for technique LoopSeer (default 0, 0 to unlimited)')
     parser.add_argument('-i', '--ioctlcode', nargs='*', default=[], help='analyze specified IoControlCode(s) (e.g. 22201c 222020 222024). If not specified, all will be analyzed')
     parser.add_argument('-c', '--complete', default=False, action='store_true', help='only report vulnerabilities with complete execution paths to STATUS_SUCCESS (default False)')
+    parser.add_argument('-a', '--address', type=str, default=None, help='manually specify the address of the IOCTL handler (in hex, e.g. 0x12345678). If not specified, it will be automatically detected by traversing DriverEntry')
     globals.args = parser.parse_args()
 
     driver = globals.args.path
 
     print(f"ANALYZING DRIVER: {driver}")
+    globals.driver_framework = utils.detect_driver_framework(driver)
+    print(f"Driver framework: {globals.driver_framework}")
+    
+    globals.proj = angr.Project(driver, auto_load_libs=False,     main_opts={'os': 'windows'})
     instrs, text_instr = utils.disasm_file(driver)
 
-    globals.proj = angr.Project(driver, auto_load_libs=False,     main_opts={'os': 'windows'})
+    entry = globals.proj.entry
+    print(f"Driver entry point: {hex(entry)}")
 
     
     # Customize calling convention for the SimProcs.
@@ -248,8 +254,24 @@ if __name__ == "__main__":
     hookDriver(driver)
 
     # Get IOCTL handler
-    ioctl_handler_addr, ioctl_handler_state = utils.find_ioctl_handler(driver)
-    print(f"IOCTL handler address: {hex(ioctl_handler_addr)}")
+            # Find and return the address of ioctl handler by traversing DriverEntry and monitorirng ioctl handler.
+    if globals.args.address:
+        ioctl_handler, ioctl_handler_state = int(globals.args.address, 16), None
+    else:
+        if globals.driver_framework == 'kmdf/wdf':
+            ioctl_handler, ioctl_handler_state = utils.find_ioctl_handler_wdf(driver)
+        else:
+            ioctl_handler, ioctl_handler_state = utils.find_ioctl_handler(driver)
+    print(f"IOCTL handler address: {hex(ioctl_handler)}")
+    if not ioctl_handler_state:
+        # utils.print_info(f'Use blank state to hunt vulnerabilities.')
+        print(f'Unable to recover a usable state for the IOCTL handler, using a blank state to hunt vulnerabilities (results may be inaccurate).')
+        ioctl_handler_state = globals.proj.factory.blank_state()
+
+
+    # if not ioctl_handler_addr or ioctl_handler_state is None:
+    #     print("ERROR: unable to recover a usable IOCTL handler state; aborting vulnerability analysis.")
+    #     raise SystemExit(1)
 
     # Handle IOCTL codes
     if globals.args.ioctlcode:
@@ -261,11 +283,11 @@ if __name__ == "__main__":
                 print(f"\n{'='*60}")
                 print(f"Analyzing IoControlCode: {hex(ioctl_code_int)} ({ioctl_code_str})")
                 print(f"{'='*60}")
-                find_vulns(driver, ioctl_handler_addr, ioctl_handler_state, specific_ioctl_code=ioctl_code_int)
+                find_vulns(driver, ioctl_handler, ioctl_handler_state, specific_ioctl_code=ioctl_code_int)
             except ValueError:
                 print(f"Error: Invalid hex value for IoControlCode: {ioctl_code_str}")
     else:
         # If no specific IOCTL codes, analyze all
         print("Analyzing all IoControlCodes...")
-        find_vulns(driver, ioctl_handler_addr, ioctl_handler_state)
+        find_vulns(driver, ioctl_handler, ioctl_handler_state)
 

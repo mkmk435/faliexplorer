@@ -11,17 +11,17 @@ def b_mem_read(state):
         # =====================================================================
         # Use-After-Free Detection
         # =====================================================================
-        if globals.phase == 2:
-            # check se il read_addr e' simbolico
-            if state.inspect.mem_read_address.symbolic:
-                read_addr = state.inspect.mem_read_address
-                print("Read_addr:", read_addr)
-                print('free_buffers: ',state.globals['freed_buffers'])
-                for freed_addr in state.globals['freed_buffers']:
-                    print(f'read_addr: {read_addr} freed_addr: {freed_addr}')
-                    if read_addr == freed_addr:
-                        utils.print_vuln('use-after-free', 'read from freed memory', state, {}, {'read from': hex(read_addr)})
-                        break
+        # if globals.phase == 2:
+        #     # check se il read_addr e' simbolico
+        #     if state.inspect.mem_read_address.symbolic:
+        #         read_addr = state.inspect.mem_read_address
+        #         print("Read_addr:", read_addr)
+        #         print('free_buffers: ',state.globals['freed_buffers'])
+        #         for freed_addr in state.globals['freed_buffers']:
+        #             print(f'read_addr: {read_addr} freed_addr: {freed_addr}')
+        #             if read_addr == freed_addr:
+        #                 utils.print_vuln('use-after-free', 'read from freed memory', state, {}, {'read from': hex(read_addr)})
+        #                 break
             
         # Iterate all target buffers.
         for target in globals.NPD_TARGETS:
@@ -343,6 +343,7 @@ def b_write_ioctl_handler(state):
     ioctl_handler_addr = state.solver.eval(state.inspect.mem_write_expr)
     globals.ioctl_handler = ioctl_handler_addr
     state.globals['ioctl_handler'] = ioctl_handler_addr
+    print(f'IOCTL handler: {hex(globals.ioctl_handler)}')
     globals.simgr.move(from_stash='deadended', to_stash='_Drop')
 
 def b_mem_write_DriverStartIo(state):
