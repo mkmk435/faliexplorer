@@ -73,6 +73,8 @@ def find_vulns(driver_path, ioctl_handler_addr, ioctl_handler_state, specific_io
     ioctl_handler_state.globals['tainted_handles'] = ()
     ioctl_handler_state.globals['tainted_objects'] = ()
     ioctl_handler_state.globals['tainted_process_context_changing'] = ()
+    ioctl_handler_state.globals['active_buffers'] = []
+    ioctl_handler_state.globals['freed_buffers'] = []
     # ioctl_handler_state.globals['tainted_translated_addresses'] = ()
 
     state = globals.proj.factory.call_state(

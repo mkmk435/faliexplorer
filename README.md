@@ -17,7 +17,7 @@
 
 # TO:DO
 - detect Use after free (If possible)
-- Rewrite all UAF and double free logic (remove active_buffers from globals and put as state['active_buffers'])
+- Rewrite all UAF and double free logic (remove active_buffers from globals and put as state.globals['active_buffers'])
 - Figure something out to detect Race Condition
 - Implement arbitrary file write detection (LPE)
 - Implement arbitrary registry key manipulation detection

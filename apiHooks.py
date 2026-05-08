@@ -295,13 +295,13 @@ class HookIoStartPacket(angr.SimProcedure):
 class HookExAllocatePoolWithTag(angr.SimProcedure):
     def run(self, PoolType, NumberOfBytes, Tag):
         if globals.phase == 2:
-            # print("Dentro ExAllocatePoolWithTag Function hook")
+            print("Dentro ExAllocatePoolWithTag Function hook")
             if utils.tainted_buffer(NumberOfBytes):
                 utils.print_vuln('allocate pool', 'ExAllocatePoolWithTag - NumberOfBytes controllable', self.state, {'PoolType': str(PoolType), 'NumberOfBytes': str(NumberOfBytes), 'Tag': str(Tag)})
 
             ret_addr = hex(self.state.callstack.ret_addr)
             allocated_ptr = claripy.BVS(f'ExAllocatePoolWithTag_{ret_addr}', self.state.arch.bits)
-            globals.active_buffers[str(allocated_ptr)] = int(self.state.solver.eval(NumberOfBytes))
+            self.state.globals['active_buffers'].append((str(allocated_ptr), int(self.state.solver.eval(NumberOfBytes))))
             return allocated_ptr    
         else:
             return utils.next_base_addr()
@@ -371,14 +371,15 @@ class HookExFreePoolWithTag(angr.SimProcedure):
                 utils.print_vuln('double free', 'ExFreePoolWithTag - buffer already freed', self.state, {'P': str(P), 'Tag': str(Tag)}, {'return address': hex(self.state.callstack.ret_addr)})
             else:
                 # Add to freed set
-                self.state.globals['freed_buffers'] += (str(P), )
+                self.state.globals['freed_buffers'].append(str(P))
                 # globals.freed_set.add(P)
                 # Remove from active buffers
-
-                if P in globals.active_buffers:
-                    print("Freeing buffer: ", P)
-                    del globals.active_buffers[P]
-                    return
+                for active_buf in self.state.globals['active_buffers']:
+                        
+                    if str(P) == active_buf[0]:
+                        print("Freeing buffer: ", P)
+                        self.state.globals['active_buffers'].remove(active_buf)
+                        return
                 
 # VOID ExFreePool(
 #   [in] PVOID P
@@ -387,12 +388,12 @@ class HookExFreePool(angr.SimProcedure):
     def run(self, P):
         # Controllo se il buffer liberato da ExFreePoolWithTag e' controllabile
         if globals.phase == 2:
-            # print("Dentro ExFreePoolWithTagP: ", P)
+            print("Dentro ExFreePoolWithTagP: ", P)
             if utils.tainted_buffer(P):
-                utils.print_vuln('free pool', 'ExFreePool - buffer controllable', self.state, {'P': str(P), 'Tag': str(Tag)}, {'return address': hex(self.state.callstack.ret_addr)})
+                utils.print_vuln('free pool', 'ExFreePool - buffer controllable', self.state, {'P': str(P)}, {'return address': hex(self.state.callstack.ret_addr)})
 
             if P in globals.freed_set:
-                utils.print_vuln('double free', 'ExFreePool - buffer already freed', self.state, {'P': str(P), 'Tag': str(Tag)}, {'return address': hex(self.state.callstack.ret_addr)})
+                utils.print_vuln('double free', 'ExFreePool - buffer already freed', self.state, {'P': str(P)}, {'return address': hex(self.state.callstack.ret_addr)})
             else:
                 # Add to freed set
                 globals.freed_set.add(P)

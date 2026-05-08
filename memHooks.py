@@ -15,8 +15,9 @@ def b_mem_read(state):
             # check se il read_addr e' simbolico
             if state.inspect.mem_read_address.symbolic:
                 read_addr = state.inspect.mem_read_address
-                # print('free_buffers: ', state.globals.get('freed_buffers', ()))
-                for freed_addr in state.globals.get('freed_buffers', ()):
+                print("Read_addr:", read_addr)
+                print('free_buffers: ',state.globals['freed_buffers'])
+                for freed_addr in state.globals['freed_buffers']:
                     print(f'read_addr: {read_addr} freed_addr: {freed_addr}')
                     if read_addr == freed_addr:
                         utils.print_vuln('use-after-free', 'read from freed memory', state, {}, {'read from': hex(read_addr)})
