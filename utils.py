@@ -667,3 +667,24 @@ def resolve_import_symbol(loader: cle.loader.Loader, symbol_name: str) -> Option
             return result
     
     return None
+
+
+# Viene usato negli hoo a Zw*File
+# Serve per analizzare praticamente se le funzioni hanno parametri taintati
+# si chiama cosi' perche' tutte queste funzioni hanno un parametro ObjectAttributes che contiene un UNICODE_STRING 
+# che potrebbe essere controllabile e portare a vulnerabilità di tipo Arbitrary File Read/Write
+def analyze_ObjectAttributes(func_name, state, ObjectAttributes):
+    ObjectName = state.mem[ObjectAttributes].struct._OBJECT_ATTRIBUTES.ObjectName.resolved
+    Attributes = state.mem[ObjectAttributes].struct._OBJECT_ATTRIBUTES.Attributes.resolved
+    Buffer = state.mem[ObjectName].struct._UNICODE_STRING.Buffer.resolved
+    tmp_state = state.copy()
+
+    # Attrbitues is not OBJ_FORCE_ACCESS_CHECK.
+    tmp_state.solver.add(Attributes & 1024 == 0)
+    
+    # Check if the ObjectName is controllable.
+    if tmp_state.satisfiable() and (str(state.mem[ObjectName].struct._UNICODE_STRING.Buffer.resolved) in state.globals['tainted_unicode_strings'] or tainted_buffer(state.memory.load(Buffer, 0x80))):
+        ret_addr = hex(state.callstack.ret_addr)
+        print_vuln(f'ObjectName in ObjectAttributes controllable', func_name, state, {'ObjectAttributes': {'ObjectName': str(ObjectName), 'ObjectName.Buffer': str(state.memory.load(Buffer, 0x80).reversed), 'Attributes': str(Attributes)}}, {'return address': ret_addr})
+    
+    return

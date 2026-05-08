@@ -343,7 +343,7 @@ def b_write_ioctl_handler(state):
     ioctl_handler_addr = state.solver.eval(state.inspect.mem_write_expr)
     globals.ioctl_handler = ioctl_handler_addr
     state.globals['ioctl_handler'] = ioctl_handler_addr
-    print(f'IOCTL handler: {hex(globals.ioctl_handler)}')
+    # print(f'IOCTL handler: {hex(globals.ioctl_handler)}')
     globals.simgr.move(from_stash='deadended', to_stash='_Drop')
 
 def b_mem_write_DriverStartIo(state):

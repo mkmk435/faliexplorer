@@ -16,6 +16,10 @@
 
 
 # TO:DO
+- Write Hook di ZwCreateFile
+- Write better hooks of RegKey functions
+- add hooks to HookMmGetSystemRoutineAddress
+- implement better heuristic for WDF ioctl handler finding
 - detect Use after free (If possible)
 - Rewrite all UAF and double free logic (remove active_buffers from globals and put as state.globals['active_buffers'])
 - Figure something out to detect Race Condition

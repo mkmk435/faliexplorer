@@ -73,6 +73,7 @@ def find_vulns(driver_path, ioctl_handler_addr, ioctl_handler_state, specific_io
     ioctl_handler_state.globals['tainted_handles'] = ()
     ioctl_handler_state.globals['tainted_objects'] = ()
     ioctl_handler_state.globals['tainted_process_context_changing'] = ()
+
     ioctl_handler_state.globals['active_buffers'] = []
     ioctl_handler_state.globals['freed_buffers'] = []
     # ioctl_handler_state.globals['tainted_translated_addresses'] = ()
@@ -112,7 +113,7 @@ def find_vulns(driver_path, ioctl_handler_addr, ioctl_handler_state, specific_io
     ("MajorFunction", 8), ("MinorFunction", 8), ('OutputBufferLength', 32), ('InputBufferLength', 32),
     ('IoControlCode', 32)])
 
-    # fixup_import_symbols(state)
+    utils.fixup_import_symbols(state)
 
     # Set the initial value of the IRP.
     state.mem[globals.irp_addr].IRP.Tail.Overlay.s.u.CurrentStackLocation = globals.irsp_addr
@@ -186,32 +187,77 @@ def hookDriver(driver_path):
     globals.proj.hook_symbol('memmove', apiHooks.HookMemcpy(cc=globals.cc))
     globals.proj.hook_symbol('memcpy', apiHooks.HookMemcpy(cc=globals.cc))
     globals.proj.hook_symbol('ZwOpenSection', apiHooks.HookZwOpenSection(cc=globals.cc))
+
     globals.proj.hook_symbol('RtlInitUnicodeString', apiHooks.HookRtlInitUnicodeString(cc=globals.cc))
     globals.proj.hook_symbol('RtlCopyUnicodeString', apiHooks.HookRtlCopyUnicodeString(cc=globals.cc))
+    globals.proj.hook_symbol('RtlQueryRegistryValues', apiHooks.HookRtlQueryRegistryValues(cc=globals.cc))
 
     globals.proj.hook_symbol('HalTranslateBusAddress', apiHooks.HookHalTranslateBusAddress(cc=globals.cc))
-    globals.proj.hook_symbol('IoStartPacket', apiHooks.HookIoStartPacket(cc=globals.cc))
     globals.proj.hook_symbol('PsLookupProcessByProcessId', apiHooks.HookPsLookupProcessByProcessId(cc=globals.cc))
     globals.proj.hook_symbol('ObOpenObjectByPointer', apiHooks.HookObOpenObjectByPointer(cc=globals.cc))
+    globals.proj.hook_symbol('ObReferenceObjectByHandle', apiHooks.HookObReferenceObjectByHandle(cc=globals.cc))
+    globals.proj.hook_symbol('KeStackAttachProcess', apiHooks.HookKeStackAttachProcess(cc=globals.cc))
+   
+    globals.proj.hook_symbol('ObCloseHandle', apiHooks.HookObCloseHandle(cc=globals.cc))
+
+    globals.proj.hook_symbol('ZwQueryInformationProcess', apiHooks.HookZwQueryInformationProcess(cc=globals.cc))
+    globals.proj.hook_symbol('NdisRegisterProtocolDriver', apiHooks.HookNdisRegisterProtocolDriver(cc=globals.cc))
+
+    globals.proj.hook_symbol('ZwQueryValueKey', apiHooks.HookZwQueryValueKey(cc=globals.cc))
+    globals.proj.hook_symbol('ZwDeleteValueKey', apiHooks.HookZwDeleteValueKey(cc=globals.cc))
+    globals.proj.hook_symbol('ZwOpenKey', apiHooks.HookZwOpenKey(cc=globals.cc))
+    globals.proj.hook_symbol('ZwCreateKey', apiHooks.HookZwCreateKey(cc=globals.cc))
+
+    globals.proj.hook_symbol('IoCreateFileSpecifyDeviceObjectHint', apiHooks.HookIoCreateFileSpecifyDeviceObjectHint(cc=globals.cc))
+    globals.proj.hook_symbol('IoCreateFileEx', apiHooks.HookIoCreateFileEx(cc=globals.cc))
+    globals.proj.hook_symbol('IoCreateFile', apiHooks.HookIoCreateFile(cc=globals.cc))
+    globals.proj.hook_symbol('ZwWriteFile', apiHooks.HookZwWriteFile(cc=globals.cc))
+    globals.proj.hook_symbol('ZwCreateFile', apiHooks.HookZwCreateFile(cc=globals.cc))
+    globals.proj.hook_symbol('ZwOpenFile', apiHooks.HookZwOpenFile(cc=globals.cc))
+    globals.proj.hook_symbol('ZwDeleteFile', apiHooks.HookZwDeleteFile(cc=globals.cc))   
+
+    globals.proj.hook_symbol('PsGetVersion', apiHooks.HookPsGetVersion(cc=globals.cc))
+    globals.proj.hook_symbol('RtlGetVersion', apiHooks.HookRtlGetVersion(cc=globals.cc))
+    globals.proj.hook_symbol('MmIsAddressValid', apiHooks.HookMmIsAddressValid(cc=globals.cc))
+    globals.proj.hook_symbol('MmGetSystemRoutineAddress', apiHooks.HookMmGetSystemRoutineAddress(cc=globals.cc))
+
+
     globals.proj.hook_symbol('IoCreateSymbolicLink', apiHooks.HookIoCreateSymbolicLink(cc=globals.cc))
     globals.proj.hook_symbol('IoCreateDevice', apiHooks.HookIoCreateDevice(cc=globals.cc))
+    globals.proj.hook_symbol('IoStartPacket', apiHooks.HookIoStartPacket(cc=globals.cc))
+
 
     
     globals.proj.hook_symbol('ProbeForRead', apiHooks.HookProbeForRead(cc=globals.cc))
     globals.proj.hook_symbol('ProbeForWrite', apiHooks.HookProbeForWrite(cc=globals.cc))
 
+
+    globals.proj.hook_symbol('ZwTerminateProcess', apiHooks.HookZwTerminateProcess(cc=globals.cc))
+
     globals.proj.hook_symbol('ZwMapViewOfSection', apiHooks.HookZwMapViewOfSection(cc=globals.cc))
     globals.proj.hook_symbol('MmMapIoSpace', apiHooks.HookMmMapIoSpace(cc=globals.cc))
     globals.proj.hook_symbol('MmMapIoSpaceEx', apiHooks.HookMmMapIoSpaceEx(cc=globals.cc))
-    globals.proj.hook_symbol('ZwTerminateProcess', apiHooks.HookZwTerminateProcess(cc=globals.cc))
 
-    globals.proj.hook_symbol("ExAllocatePoolWithTag", apiHooks.HookExAllocatePoolWithTag(cc=globals.cc))
+    globals.proj.hook_symbol('ExAllocatePool', apiHooks.HookExAllocatePool(cc=globals.cc))
     globals.proj.hook_symbol("ExAllocatePool2", apiHooks.HookExAllocatePool2(cc=globals.cc))
     globals.proj.hook_symbol("ExAllocatePool3", apiHooks.HookExAllocatePool3(cc=globals.cc))
+    globals.proj.hook_symbol("ExAllocatePoolWithTag", apiHooks.HookExAllocatePoolWithTag(cc=globals.cc))
 
     globals.proj.hook_symbol("ExFreePoolWithTag", apiHooks.HookExFreePoolWithTag(cc=globals.cc))
     globals.proj.hook_symbol("ExFreePool2", apiHooks.HookExFreePool2(cc=globals.cc))
     globals.proj.hook_symbol("ExFreePool", apiHooks.HookExFreePool(cc=globals.cc))
+
+
+    globals.proj.hook_symbol('IoIs32bitProcess', apiHooks.HookIoIs32bitProcess(cc=globals.cc))
+    globals.proj.hook_symbol('Vsnprintf', apiHooks.HookVsnprintf(cc=globals.cc))
+    globals.proj.hook_symbol('ExInitializeResourceLite', apiHooks.HookExInitializeResourceLite(cc=globals.cc))
+    globals.proj.hook_symbol('ExQueryDepthSList', apiHooks.HookExQueryDepthSList(cc=globals.cc))
+    globals.proj.hook_symbol('ExpInterlockedPopEntrySList', apiHooks.HookExpInterlockedPopEntrySList(cc=globals.cc))
+    globals.proj.hook_symbol('ExpInterlockedPushEntrySList', apiHooks.HookExpInterlockedPushEntrySList(cc=globals.cc))
+    globals.proj.hook_symbol('KeWaitForSingleObject', apiHooks.HookKeWaitForSingleObject(cc=globals.cc))
+    globals.proj.hook_symbol('RtlWriteRegistryValue', apiHooks.HookRtlWriteRegistryValue(cc=globals.cc))
+    globals.proj.hook_symbol('IoGetDeviceProperty', apiHooks.HookIoGetDeviceProperty(cc=globals.cc))
+    globals.proj.hook_symbol('KeReleseMutex', apiHooks.HookKeReleaseMutex(cc=globals.cc))
 
     globals.ps_process_type = utils.resolve_import_symbol_in_object(globals.proj.loader.main_object, "PsProcessType")
 
