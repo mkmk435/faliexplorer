@@ -1,0 +1,161 @@
+{
+  "driver_name": "RTCore64",
+  "generated_at": "2026-05-09T06:45:18.480264",
+  "total_vulnerabilities": 13,
+  "vulnerabilities": [
+    {
+      "timestamp": "2026-05-09T06:45:08.218039",
+      "vulnerability_type": "arbitrary in vuln",
+      "access_type": "",
+      "ioctl": "0x8000200c",
+      "rip": "0x11696",
+      "additional_info": {
+        "I/O Port": "<BV32 InputBufferLength_51_32[31:16] .. *<BV64 SystemBuffer_45_64>_56_4096[15:0]>"
+      },
+      "address_info": {}
+    },
+    {
+      "timestamp": "2026-05-09T06:45:08.540755",
+      "vulnerability_type": "read/write controllable address",
+      "access_type": "read",
+      "ioctl": "0x80002048",
+      "rip": "0x114f6",
+      "additional_info": {},
+      "address_info": {
+        "read from": "<BV64 (0x0 .. *<BV64 SystemBuffer_45_64>_58_4096[191:160]) + *<BV64 SystemBuffer_45_64>_58_4096[127:64]>"
+      }
+    },
+    {
+      "timestamp": "2026-05-09T06:45:12.302124",
+      "vulnerability_type": "read/write controllable address",
+      "access_type": "write",
+      "ioctl": "0x8000204c",
+      "rip": "0x1154f",
+      "additional_info": {},
+      "address_info": {
+        "write to": "<BV64 (0x0 .. *<BV64 SystemBuffer_45_64>_92_4096[191:160]) + *<BV64 SystemBuffer_45_64>_92_4096[127:64]>"
+      }
+    },
+    {
+      "timestamp": "2026-05-09T06:45:13.680251",
+      "vulnerability_type": "WRMSR registers are tainted",
+      "access_type": "",
+      "ioctl": "0x80002034",
+      "rip": "0x118a4",
+      "additional_info": {},
+      "address_info": {}
+    },
+    {
+      "timestamp": "2026-05-09T06:45:13.692433",
+      "vulnerability_type": "arbitrary wrmsr",
+      "access_type": "",
+      "ioctl": "0x80002034",
+      "rip": "0x118a4",
+      "additional_info": {
+        "Register": "<BV32 *<BV64 SystemBuffer_45_64>_101_4096[31:0]>",
+        "Value": [
+          "<BV32 *<BV64 SystemBuffer_45_64>_101_4096[63:32]>",
+          "<BV32 *<BV64 SystemBuffer_45_64>_101_4096[95:64]>"
+        ]
+      },
+      "address_info": {}
+    },
+    {
+      "timestamp": "2026-05-09T06:45:14.207317",
+      "vulnerability_type": "null pointer dereference - input buffer",
+      "access_type": "read input buffer",
+      "ioctl": "0x80002000",
+      "rip": "0x1114b",
+      "additional_info": {},
+      "address_info": {
+        "read from": "<BV64 SystemBuffer_45_64 + 0x8>"
+      }
+    },
+    {
+      "timestamp": "2026-05-09T06:45:15.424314",
+      "vulnerability_type": "map physical memory",
+      "access_type": "ZwMapViewOfSection - unknown handle",
+      "ioctl": "0x80002000",
+      "rip": "0x100000",
+      "additional_info": {
+        "SectionHandle": "<BV64 ZwOpenSection_0x111ef_122_64>",
+        "ProcessHandle": "<BV64 0xffffffffffffffff>",
+        "BaseAddress": "<BV64 0x7fffffffffefec8>",
+        "CommitSize": "<BV64 0x0 .. *<BV64 SystemBuffer_45_64>_115_4096[95:64]>",
+        "ViewSize": "<BV64 0x7fffffffffefee0>"
+      },
+      "address_info": {
+        "return address": "0x11301"
+      }
+    },
+    {
+      "timestamp": "2026-05-09T06:45:15.863634",
+      "vulnerability_type": "RDMSR registers are tainted",
+      "access_type": "",
+      "ioctl": "0x80002030",
+      "rip": "0x11839",
+      "additional_info": {},
+      "address_info": {}
+    },
+    {
+      "timestamp": "2026-05-09T06:45:15.875741",
+      "vulnerability_type": "arbitrary rdmsr",
+      "access_type": "",
+      "ioctl": "0x80002030",
+      "rip": "0x11839",
+      "additional_info": {
+        "Register": "<BV32 *<BV64 SystemBuffer_45_64>_139_4096[31:0]>"
+      },
+      "address_info": {}
+    },
+    {
+      "timestamp": "2026-05-09T06:45:17.426167",
+      "vulnerability_type": "map physical memory",
+      "access_type": "MmMapIoSpace - PhysicalAddress and NumberOfBytes controllable",
+      "ioctl": "0x80002040",
+      "rip": "0x100018",
+      "additional_info": {
+        "PhysicalAddress": "<BV64 *<BV64 SystemBuffer_45_64>_149_4096[63:0]>",
+        "NumberOfBytes": "<BV64 0x0 .. *<BV64 SystemBuffer_45_64>_149_4096[159:128]>",
+        "CacheType": "<BV64 0x0>"
+      },
+      "address_info": {
+        "return address": "0x11402"
+      }
+    },
+    {
+      "timestamp": "2026-05-09T06:45:17.840112",
+      "vulnerability_type": "arbitrary in vuln",
+      "access_type": "",
+      "ioctl": "0x80002010",
+      "rip": "0x116c5",
+      "additional_info": {
+        "I/O Port": "<BV32 InputBufferLength_51_32[31:16] .. *<BV64 SystemBuffer_45_64>_158_4096[15:0]>"
+      },
+      "address_info": {}
+    },
+    {
+      "timestamp": "2026-05-09T06:45:18.044668",
+      "vulnerability_type": "arbitrary in vuln",
+      "access_type": "",
+      "ioctl": "0x80002008",
+      "rip": "0x11668",
+      "additional_info": {
+        "I/O Port": "<BV32 InputBufferLength_51_32[31:16] .. *<BV64 SystemBuffer_45_64>_161_4096[15:0]>"
+      },
+      "address_info": {}
+    },
+    {
+      "timestamp": "2026-05-09T06:45:18.480212",
+      "vulnerability_type": "arbitrary out vuln",
+      "access_type": "",
+      "ioctl": "0x8000201c",
+      "rip": "0x117a0",
+      "additional_info": {
+        "I/O Port": "<BV32 *<BV64 SystemBuffer_45_64>_164_4096[63:48] .. *<BV64 SystemBuffer_45_64>_164_4096[15:0]>",
+        "Value": "<BV32 *<BV64 SystemBuffer_45_64>_164_4096[63:32]>"
+      },
+      "address_info": {}
+    }
+  ]
+}

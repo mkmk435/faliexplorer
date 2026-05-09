@@ -333,7 +333,7 @@ class HookExAllocatePool(angr.SimProcedure):
 class HookExAllocatePoolWithTag(angr.SimProcedure):
     def run(self, PoolType, NumberOfBytes, Tag):
         if globals.phase == 2:
-            print("Dentro ExAllocatePoolWithTag Function hook")
+            # print("Dentro ExAllocatePoolWithTag Function hook")
             if utils.tainted_buffer(NumberOfBytes):
                 utils.print_vuln('allocate pool', 'ExAllocatePoolWithTag - NumberOfBytes controllable', self.state, {'PoolType': str(PoolType), 'NumberOfBytes': str(NumberOfBytes), 'Tag': str(Tag)})
 

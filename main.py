@@ -279,6 +279,7 @@ if __name__ == "__main__":
     driver = globals.args.path
 
     print(f"ANALYZING DRIVER: {driver}")
+    utils.set_current_driver(driver)
     globals.driver_framework = utils.detect_driver_framework(driver)
     print(f"Driver framework: {globals.driver_framework}")
     

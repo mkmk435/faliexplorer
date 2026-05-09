@@ -13,12 +13,18 @@ import traceback
 import cle
 from cle.backends.pe.relocation.generic import DllImport
 from typing import Optional
+import json
+from datetime import datetime
 
 
 
 
 vuln_rips = []
 past_ioctls = []
+vulnerabilities_list = []
+current_driver_file = None  # Will be set to the driver filename being analyzed
+REPORT_DIR = "reports"
+REPORT_FILE = None  # Will be set based on the driver name
 
 def next_base_addr(size=0x10000):
     v = globals.FIRST_ADDR
@@ -624,7 +630,18 @@ def tainted_buffer(buffer):
             return buf
     return ''
 
+def set_current_driver(driver_path):
+    """Set the current driver being analyzed. Should be called at the start of analysis."""
+    global current_driver_file, REPORT_FILE, vulnerabilities_list
+    import os
+    vulnerabilities_list = []  # Reset vulnerabilities for new driver
+    current_driver_file = os.path.splitext(os.path.basename(driver_path))[0]
+    REPORT_FILE = os.path.join(REPORT_DIR, f"{current_driver_file}_report.json")
+    print(f"[INFO] Starting analysis for driver: {current_driver_file}")
+
+
 def print_vuln(vuln_type, access_type, state, additional_info, address_info):
+    """Print vulnerability information and generate structured JSON report."""
     rip = state.solver.eval(state.regs.rip)
     ioctl = state.solver.eval(globals.IoControlCode)
     # if ioctl  in past_ioctls:
@@ -633,11 +650,18 @@ def print_vuln(vuln_type, access_type, state, additional_info, address_info):
     # if rip in vuln_rips:
     #     return
     # vuln_rips.append(rip)
-    """Print vulnerability information."""
+    
+    # Check for duplicate vulnerability (same type, access type, and IOCTL)
+    ioctl_hex = hex(ioctl)
+    if _is_vulnerability_duplicate(vuln_type, access_type, ioctl_hex):
+        print(f"[INFO] Skipping duplicate vulnerability: {vuln_type} - {access_type} on IOCTL {ioctl_hex}")
+        return
+    
+    # Print to console
     print("____________________________________________________________")
     print(f"[VULN] {vuln_type} - {access_type}")
     print(f"  State: {state}")
-    print(f"IOCTL: {hex(ioctl)  }")
+    print(f"IOCTL: {ioctl_hex}")
     print(f"RIP: {hex(rip)}")
 
 
@@ -646,11 +670,72 @@ def print_vuln(vuln_type, access_type, state, additional_info, address_info):
     for key, value in address_info.items():
         print(f"  {key}: {value}")
     print("____________________________________________________________")
+    
+    # Generate structured report entry
+    vuln_entry = {
+        "timestamp": datetime.now().isoformat(),
+        "vulnerability_type": vuln_type,
+        "access_type": access_type,
+        "ioctl": ioctl_hex,
+        "rip": hex(rip),
+        "additional_info": _serialize_for_json(additional_info),
+        "address_info": _serialize_for_json(address_info)
+    }
+    
+    # Add to vulnerabilities list
+    vulnerabilities_list.append(vuln_entry)
+    
+    # Write updated report to file (overwrite mode)
+    _write_json_report()
 
 def print_debug(msg):
     """Print debug information if DEBUG mode is enabled."""
     if getattr(globals, 'DEBUG', False):
         print(f"[DEBUG] {msg}")
+
+
+def _is_vulnerability_duplicate(vuln_type, access_type, ioctl_hex):
+    """Check if a vulnerability with the same type, access type, and IOCTL already exists."""
+    for vuln in vulnerabilities_list:
+        if (vuln["vulnerability_type"] == vuln_type and 
+            vuln["access_type"] == access_type and 
+            vuln["ioctl"] == ioctl_hex):
+            return True
+    return False
+
+
+def _serialize_for_json(obj):
+    """Convert an object to a JSON-serializable format."""
+    if isinstance(obj, dict):
+        return {key: _serialize_for_json(value) for key, value in obj.items()}
+    elif isinstance(obj, (list, tuple)):
+        return [_serialize_for_json(item) for item in obj]
+    elif isinstance(obj, str):
+        return obj
+    elif hasattr(obj, '__str__'):
+        return str(obj)
+    else:
+        return str(obj)
+
+
+def _write_json_report():
+    """Write the vulnerabilities list to a JSON report file (overwrite mode)."""
+    import os
+    try:
+        # Create reports directory if it doesn't exist
+        os.makedirs(REPORT_DIR, exist_ok=True)
+        
+        report_data = {
+            "driver_name": current_driver_file,
+            "generated_at": datetime.now().isoformat(),
+            "total_vulnerabilities": len(vulnerabilities_list),
+            "vulnerabilities": vulnerabilities_list
+        }
+        with open(REPORT_FILE, 'w') as f:
+            json.dump(report_data, f, indent=2)
+        print(f"[INFO] Vulnerability report updated: {REPORT_FILE}")
+    except Exception as e:
+        print(f"[ERROR] Failed to write report file: {e}")
 
 
 def resolve_import_symbol_in_object(pe_object: cle.backends.pe.pe.PE, symbol_name: str) -> Optional[int]:

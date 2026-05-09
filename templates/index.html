@@ -1,0 +1,397 @@
+{% extends "base.html" %}
+
+{% block title %}Vulnerability Report Viewer{% endblock %}
+
+{% block content %}
+<div class="container">
+    <div class="header">
+        <h1>🔐 Vulnerability Report Viewer</h1>
+        <p>Analyze and view kernel driver vulnerability analysis reports</p>
+    </div>
+
+    <div id="alertContainer"></div>
+
+    <div class="card">
+        <h2 style="margin-bottom: 20px; color: #333;"><i class="fas fa-upload"></i> Load Reports</h2>
+
+        <div style="display: flex; gap: 20px; flex-wrap: wrap;">
+            <div style="flex: 1; min-width: 300px;">
+                <h3 style="margin-bottom: 15px; color: #555;">Load Single Report</h3>
+                <form id="singleFileForm" enctype="multipart/form-data">
+                    <div class="form-group">
+                        <label for="singleFile">Select JSON Report File:</label>
+                        <input type="file" id="singleFile" name="file" accept=".json" class="form-control" required>
+                    </div>
+                    <button type="submit" class="btn">
+                        <i class="fas fa-file-upload"></i> Load Report
+                    </button>
+                </form>
+            </div>
+
+            <div style="flex: 1; min-width: 300px;">
+                <h3 style="margin-bottom: 15px; color: #555;">Load Reports Directory</h3>
+                <form id="directoryForm" enctype="multipart/form-data">
+                    <div class="form-group">
+                        <label for="directoryFiles">Select Directory with JSON Reports:</label>
+                        <input type="file" id="directoryFiles" name="files" webkitdirectory directory multiple accept=".json" class="form-control" required>
+                    </div>
+                    <button type="submit" class="btn">
+                        <i class="fas fa-folder-open"></i> Load Directory
+                    </button>
+                </form>
+            </div>
+        </div>
+
+        <div style="margin-top: 20px; padding-top: 20px; border-top: 1px solid #eee;">
+            <button id="clearAllBtn" class="btn btn-danger">
+                <i class="fas fa-trash"></i> Clear All Reports
+            </button>
+        </div>
+    </div>
+
+    <div id="tabsContainer" class="tabs hidden"></div>
+
+    <div id="statsContainer" class="hidden"></div>
+
+    <div id="filterSection" class="hidden"></div>
+
+    <div id="vulnerabilitiesContainer" class="hidden"></div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+let currentReport = null;
+
+$(document).ready(function() {
+    // Load single file form
+    $('#singleFileForm').on('submit', function(e) {
+        e.preventDefault();
+        const formData = new FormData(this);
+
+        showAlert('Loading report...', 'info');
+        $('#singleFileForm button').prop('disabled', true).html('<span class="loading"></span> Loading...');
+
+        $.ajax({
+            url: '/api/load_single_report',
+            type: 'POST',
+            data: formData,
+            processData: false,
+            contentType: false,
+            success: function(response) {
+                if (response.success) {
+                    addReportTab(response.report_name);
+                    selectReport(response.report_name);
+                    showAlert(`Successfully loaded ${response.report_name}`, 'success');
+                } else {
+                    showAlert(response.error, 'error');
+                }
+            },
+            error: function(xhr) {
+                showAlert('Error loading report: ' + xhr.responseJSON.error, 'error');
+            },
+            complete: function() {
+                $('#singleFileForm button').prop('disabled', false).html('<i class="fas fa-file-upload"></i> Load Report');
+            }
+        });
+    });
+
+    // Load directory form
+    $('#directoryForm').on('submit', function(e) {
+        e.preventDefault();
+        const formData = new FormData(this);
+
+        showAlert('Loading directory...', 'info');
+        $('#directoryForm button').prop('disabled', true).html('<span class="loading"></span> Loading...');
+
+        $.ajax({
+            url: '/api/load_directory',
+            type: 'POST',
+            data: formData,
+            processData: false,
+            contentType: false,
+            success: function(response) {
+                if (response.success) {
+                    Object.keys(response.loaded_reports).forEach(reportName => {
+                        addReportTab(reportName);
+                    });
+
+                    if (Object.keys(response.loaded_reports).length > 0) {
+                        const firstReport = Object.keys(response.loaded_reports)[0];
+                        selectReport(firstReport);
+                    }
+
+                    let message = `Successfully loaded ${Object.keys(response.loaded_reports).length} reports`;
+                    if (response.errors && response.errors.length > 0) {
+                        message += `. Errors: ${response.errors.join(', ')}`;
+                    }
+                    showAlert(message, 'success');
+                } else {
+                    showAlert(response.error, 'error');
+                }
+            },
+            error: function(xhr) {
+                showAlert('Error loading directory: ' + xhr.responseJSON.error, 'error');
+            },
+            complete: function() {
+                $('#directoryForm button').prop('disabled', false).html('<i class="fas fa-folder-open"></i> Load Directory');
+            }
+        });
+    });
+
+    // Clear all reports
+    $('#clearAllBtn').on('click', function() {
+        if (confirm('Are you sure you want to clear all loaded reports?')) {
+            $.ajax({
+                url: '/api/clear_all_reports',
+                type: 'DELETE',
+                success: function() {
+                    $('#tabsContainer').addClass('hidden').empty();
+                    $('#statsContainer').addClass('hidden').empty();
+                    $('#filterSection').addClass('hidden').empty();
+                    $('#vulnerabilitiesContainer').addClass('hidden').empty();
+                    currentReport = null;
+                    showAlert('All reports cleared', 'success');
+                },
+                error: function(xhr) {
+                    showAlert('Error clearing reports: ' + xhr.responseJSON.error, 'error');
+                }
+            });
+        }
+    });
+});
+
+function addReportTab(reportName) {
+    const tabsContainer = $('#tabsContainer');
+    tabsContainer.removeClass('hidden');
+
+    // Check if tab already exists
+    if ($(`#tab-${reportName.replace(/[^a-zA-Z0-9]/g, '_')}`).length > 0) {
+        return;
+    }
+
+    const tabId = `tab-${reportName.replace(/[^a-zA-Z0-9]/g, '_')}`;
+    const tab = $(`
+        <div class="tab" id="${tabId}" onclick="selectReport('${reportName}')">
+            <span>${reportName}</span>
+            <span class="close-btn" onclick="event.stopPropagation(); removeReport('${reportName}')">×</span>
+        </div>
+    `);
+    tabsContainer.append(tab);
+}
+
+function selectReport(reportName) {
+    // Update active tab
+    $('.tab').removeClass('active');
+    const tabId = `tab-${reportName.replace(/[^a-zA-Z0-9]/g, '_')}`;
+    $(`#${tabId}`).addClass('active');
+
+    currentReport = reportName;
+    loadReportData(reportName);
+}
+
+function removeReport(reportName) {
+    $.ajax({
+        url: `/api/remove_report/${encodeURIComponent(reportName)}`,
+        type: 'DELETE',
+        success: function() {
+            const tabId = `tab-${reportName.replace(/[^a-zA-Z0-9]/g, '_')}`;
+            $(`#${tabId}`).remove();
+
+            if (currentReport === reportName) {
+                const remainingTabs = $('.tab');
+                if (remainingTabs.length > 0) {
+                    const firstTab = remainingTabs.first();
+                    const firstReportName = firstTab.find('span:first').text();
+                    selectReport(firstReportName);
+                } else {
+                    $('#statsContainer').addClass('hidden').empty();
+                    $('#filterSection').addClass('hidden').empty();
+                    $('#vulnerabilitiesContainer').addClass('hidden').empty();
+                    currentReport = null;
+                }
+            }
+            showAlert(`Removed ${reportName}`, 'success');
+        },
+        error: function(xhr) {
+            showAlert('Error removing report: ' + xhr.responseJSON.error, 'error');
+        }
+    });
+}
+
+function loadReportData(reportName) {
+    // Load statistics
+    $.get(`/api/get_statistics/${encodeURIComponent(reportName)}`, function(stats) {
+        displayStats(stats);
+    });
+
+    // Load full report data for filtering
+    $.get(`/api/get_report/${encodeURIComponent(reportName)}`, function(data) {
+        displayFilters(data);
+        displayVulnerabilities(data);
+    });
+}
+
+function displayStats(stats) {
+    const container = $('#statsContainer');
+    container.removeClass('hidden');
+
+    let html = `
+        <div class="alert alert-info">
+            <strong>Driver:</strong> ${stats.driver_name} |
+            <strong>Generated:</strong> ${new Date(stats.generated_at).toLocaleString()}
+        </div>
+        <div class="stats-grid">
+            <div class="stat-card">
+                <div class="stat-label">Total Vulnerabilities</div>
+                <div class="stat-value">${stats.total_vulnerabilities}</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-label">Unique Vulnerability Types</div>
+                <div class="stat-value">${stats.unique_vuln_types}</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-label">Unique Access Types</div>
+                <div class="stat-value">${stats.unique_access_types}</div>
+            </div>
+        </div>
+
+        <div class="breakdown-grid">
+            <div class="breakdown-card">
+                <div class="breakdown-title">By Vulnerability Type</div>
+                ${Object.entries(stats.vuln_types_breakdown).map(([type, count]) =>
+                    `<div class="breakdown-item"><span>${type}</span><span style="font-weight: bold;">${count}</span></div>`
+                ).join('')}
+            </div>
+            <div class="breakdown-card">
+                <div class="breakdown-title">By Access Type</div>
+                ${Object.entries(stats.access_types_breakdown).map(([type, count]) =>
+                    `<div class="breakdown-item"><span>${type}</span><span style="font-weight: bold;">${count}</span></div>`
+                ).join('')}
+            </div>
+        </div>
+    `;
+
+    container.html(html);
+}
+
+function displayFilters(data) {
+    const container = $('#filterSection');
+    container.removeClass('hidden');
+
+    const vulnTypes = [...new Set(data.vulnerabilities.map(v => v.vulnerability_type))];
+    const accessTypes = [...new Set(data.vulnerabilities.map(v => v.access_type))];
+
+    let html = `
+        <div class="filter-section">
+            <label style="font-weight: 600;">Filters:</label>
+            <input type="text" class="filter-input" id="searchInput" placeholder="Search by IOCTL, RIP, or type..." onkeyup="applyFilters()">
+            <select class="filter-input" id="vulnTypeFilter" onchange="applyFilters()">
+                <option value="">All Vulnerability Types</option>
+                ${vulnTypes.map(type => `<option value="${type}">${type}</option>`).join('')}
+            </select>
+            <select class="filter-input" id="accessTypeFilter" onchange="applyFilters()">
+                <option value="">All Access Types</option>
+                ${accessTypes.map(type => `<option value="${type}">${type}</option>`).join('')}
+            </select>
+        </div>
+    `;
+
+    container.html(html);
+}
+
+function applyFilters() {
+    if (!currentReport) return;
+
+    const searchText = $('#searchInput').val().toLowerCase();
+    const vulnTypeFilter = $('#vulnTypeFilter').val();
+    const accessTypeFilter = $('#accessTypeFilter').val();
+
+    $.get(`/api/get_report/${encodeURIComponent(currentReport)}`, function(data) {
+        const filteredVulns = data.vulnerabilities.filter(vuln => {
+            const matchesSearch = !searchText ||
+                vuln.ioctl.toLowerCase().includes(searchText) ||
+                vuln.rip.toLowerCase().includes(searchText) ||
+                vuln.vulnerability_type.toLowerCase().includes(searchText) ||
+                vuln.access_type.toLowerCase().includes(searchText);
+
+            const matchesVulnType = !vulnTypeFilter || vuln.vulnerability_type === vulnTypeFilter;
+            const matchesAccessType = !accessTypeFilter || vuln.access_type === accessTypeFilter;
+
+            return matchesSearch && matchesVulnType && matchesAccessType;
+        });
+
+        displayVulnerabilities({...data, vulnerabilities: filteredVulns});
+    });
+}
+
+function displayVulnerabilities(data) {
+    const container = $('#vulnerabilitiesContainer');
+    container.removeClass('hidden');
+
+    if (data.vulnerabilities.length === 0) {
+        container.html('<div class="empty-state"><h2>No vulnerabilities found</h2><p>Try adjusting your filters</p></div>');
+        return;
+    }
+
+    let html = `<div class="vulnerabilities-list">
+        <h2 style="margin-bottom: 20px; color: #333;"><i class="fas fa-bug"></i> Vulnerabilities (${data.vulnerabilities.length})</h2>
+    `;
+
+    data.vulnerabilities.forEach((vuln, index) => {
+        html += `
+            <div class="vuln-item">
+                <div class="vuln-header">
+                    <span class="vuln-type">#${index + 1}</span>
+                    <span class="vuln-badge badge-type">${vuln.vulnerability_type}</span>
+                    <span class="vuln-badge badge-access">${vuln.access_type}</span>
+                </div>
+                <div class="vuln-body">
+                    <div class="vuln-field">
+                        <div class="vuln-field-label">IOCTL</div>
+                        <div class="vuln-field-value">${vuln.ioctl}</div>
+                    </div>
+                    <div class="vuln-field">
+                        <div class="vuln-field-label">RIP (Instruction Pointer)</div>
+                        <div class="vuln-field-value">${vuln.rip}</div>
+                    </div>
+                    ${Object.entries(vuln.address_info).map(([key, value]) =>
+                        `<div class="vuln-field">
+                            <div class="vuln-field-label">${key}</div>
+                            <div class="vuln-field-value">${value}</div>
+                        </div>`
+                    ).join('')}
+                </div>
+                ${Object.keys(vuln.additional_info).length > 0 ? `
+                    <div style="margin-top: 10px; padding-top: 10px; border-top: 1px solid #eee;">
+                        <details>
+                            <summary style="font-weight: 600; color: #666; cursor: pointer;">Additional Information</summary>
+                            <pre style="margin-top: 10px; padding: 10px; background: #f9f9f9; border-radius: 5px; overflow-x: auto; font-size: 0.9em;">${JSON.stringify(vuln.additional_info, null, 2)}</pre>
+                        </details>
+                    </div>
+                ` : ''}
+                <div class="timestamp" style="margin-top: 10px;">
+                    Found: ${new Date(vuln.timestamp).toLocaleString()}
+                </div>
+            </div>
+        `;
+    });
+
+    html += '</div>';
+    container.html(html);
+}
+
+function showAlert(message, type) {
+    const alertClass = type === 'error' ? 'alert-error' : type === 'success' ? 'alert-success' : 'alert-info';
+    const alertHtml = `<div class="alert ${alertClass}">${message}</div>`;
+    $('#alertContainer').html(alertHtml);
+
+    // Auto-hide success and info alerts after 5 seconds
+    if (type === 'success' || type === 'info') {
+        setTimeout(() => {
+            $('#alertContainer').empty();
+        }, 5000);
+    }
+}
+</script>
+{% endblock %}
