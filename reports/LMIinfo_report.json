@@ -1,0 +1,21 @@
+{
+  "driver_name": "LMIinfo",
+  "generated_at": "2026-05-09T22:18:39.419563",
+  "total_vulnerabilities": 1,
+  "vulnerabilities": [
+    {
+      "timestamp": "2026-05-09T22:18:39.419496",
+      "vulnerability_type": "lookup process",
+      "access_type": "PsLookupProcessByProcessId - ProcessId tainted",
+      "ioctl": "0x9211001c",
+      "rip": "0x140100068",
+      "additional_info": {
+        "ProcessId": "<BV64 *<BV64 SystemBuffer_24_64>_28_4096[63:0]>",
+        "Process": "<BV64 0x7fffffffffefed0>"
+      },
+      "address_info": {
+        "return address": "0x1400022c2"
+      }
+    }
+  ]
+}

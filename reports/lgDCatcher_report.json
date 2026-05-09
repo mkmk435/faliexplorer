@@ -1,0 +1,54 @@
+{
+  "driver_name": "lgDCatcher",
+  "generated_at": "2026-05-09T21:20:50.900030",
+  "total_vulnerabilities": 3,
+  "vulnerabilities": [
+    {
+      "timestamp": "2026-05-09T21:20:05.698860",
+      "vulnerability_type": "double free",
+      "access_type": "ExFreePoolWithTag - buffer already freed",
+      "ioctl": "0x2201c4",
+      "rip": "0x140100140",
+      "additional_info": {
+        "P": "<BV64 mem_298_96_64{UNINITIALIZED}>",
+        "Tag": "<BV64 0x0>"
+      },
+      "address_info": {
+        "return address": "0x14000d1a9"
+      }
+    },
+    {
+      "timestamp": "2026-05-09T21:20:50.861366",
+      "vulnerability_type": "lookup process",
+      "access_type": "PsLookupProcessByProcessId - ProcessId tainted",
+      "ioctl": "0x220198",
+      "rip": "0x1401000e0",
+      "additional_info": {
+        "ProcessId": "<BV64 0x0 .. *<BV64 SystemBuffer_91_64>_174_4096[31:0]>",
+        "Process": "<BV64 0x7fffffffffefd80>"
+      },
+      "address_info": {
+        "return address": "0x14000a5e7"
+      }
+    },
+    {
+      "timestamp": "2026-05-09T21:20:50.899972",
+      "vulnerability_type": "open object",
+      "access_type": "ObOpenObjectByPointer - Object controllable",
+      "ioctl": "0x220198",
+      "rip": "0x1401000e8",
+      "additional_info": {
+        "Object": "<BV64 PsLookupProcessByProcessId_0x14000a5e7_177_64>",
+        "HandleAttributes": "<BV64 0x200>",
+        "PassedAccessState": "<BV64 0x0>",
+        "DesiredAccess": "<BV64 0x0>",
+        "ObjectType": "<BV64 0x0>",
+        "AccessMode": "<BV64 mem_7fffffffffefd69_178_56{UNINITIALIZED} .. 0>",
+        "Handle": "<BV64 0x7fffffffffefdd8>"
+      },
+      "address_info": {
+        "return address": "0x14000a61c"
+      }
+    }
+  ]
+}

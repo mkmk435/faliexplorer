@@ -1,0 +1,108 @@
+{
+    "basic": {
+        "path": "driver_dataset/dataset/lgDCatcher.sys",
+        "time": {
+            "ioctl handler": 6,
+            "hunting vulns": 94
+        },
+        "memory": {
+            "ioctl handler": 77312,
+            "hunting vulns": 488704
+        },
+        "unique addr": {
+            "ioctl handler": 53,
+            "hunting vulns": 1045
+        },
+        "ioctl handler": "0x140006780",
+        "IoControlCodes": [
+            "0x2201bc",
+            "0x2201c8",
+            "0x2201d4",
+            "0x2201dc",
+            "0x2201d8",
+            "0x2201d0",
+            "0x2201cc",
+            "0x2201c4",
+            "0x2201c0",
+            "0x12c800",
+            "0x220198",
+            "0x2201a4",
+            "0x2201b0",
+            "0x2201b4",
+            "0x2201ac",
+            "0x2201a8",
+            "0x2201a0",
+            "0x22019c",
+            "0x2201b8"
+        ]
+    },
+    "vuln": [
+        {
+            "title": "controllable process handle",
+            "description": "ObOpenObjectByPointer - Object controllable",
+            "state": "<SimState @ 0x1401000e8>",
+            "parameters": {
+                "Object": "<BV64 PsLookupProcessByProcessId_0x14000a5e7_202_64>",
+                "Handle": "<BV64 0x7fffffffffeffa8>"
+            },
+            "eval": {
+                "IoControlCode": "0x220198",
+                "SystemBuffer": "0x44530000",
+                "Type3InputBuffer": "0x0",
+                "UserBuffer": "0x0",
+                "InputBufferLength": "0x4",
+                "OutputBufferLength": "0x0"
+            },
+            "others": {
+                "return address": "0x14000a61c"
+            }
+        }
+    ],
+    "error": [
+        "<State errored with \"IR decoding error at 0x14000b294. You can hook this instruction with a python replacement using project.hook(0x14000b294, your_function, length=length_of_instruction).\">",
+        "<State errored with \"No bytes in memory for block starting at 0x0.\">",
+        "<State errored with \"IR decoding error at 0x14000b294. You can hook this instruction with a python replacement using project.hook(0x14000b294, your_function, length=length_of_instruction).\">",
+        "<State errored with \"No bytes in memory for block starting at 0x0.\">",
+        "<State errored with \"IR decoding error at 0x14000b294. You can hook this instruction with a python replacement using project.hook(0x14000b294, your_function, length=length_of_instruction).\">",
+        "<State errored with \"IR decoding error at 0x14000b294. You can hook this instruction with a python replacement using project.hook(0x14000b294, your_function, length=length_of_instruction).\">",
+        "<State errored with \"IR decoding error at 0x14000b294. You can hook this instruction with a python replacement using project.hook(0x14000b294, your_function, length=length_of_instruction).\">",
+        "<State errored with \"IR decoding error at 0x14000b294. You can hook this instruction with a python replacement using project.hook(0x14000b294, your_function, length=length_of_instruction).\">",
+        "<State errored with \"IR decoding error at 0x14000b294. You can hook this instruction with a python replacement using project.hook(0x14000b294, your_function, length=length_of_instruction).\">",
+        "<State errored with \"IR decoding error at 0x14000b294. You can hook this instruction with a python replacement using project.hook(0x14000b294, your_function, length=length_of_instruction).\">",
+        "<State errored with \"IR decoding error at 0x14000d531. You can hook this instruction with a python replacement using project.hook(0x14000d531, your_function, length=length_of_instruction).\">",
+        "<State errored with \"IR decoding error at 0x14000d531. You can hook this instruction with a python replacement using project.hook(0x14000d531, your_function, length=length_of_instruction).\">",
+        "<State errored with \"No bytes in memory for block starting at 0x0.\">",
+        "<State errored with \"No bytes in memory for block starting at 0x0.\">",
+        "<State errored with \"No bytes in memory for block starting at 0x0.\">",
+        "<State errored with \"No bytes in memory for block starting at 0x0.\">",
+        "<State errored with \"No bytes in memory for block starting at 0x0.\">",
+        "<State errored with \"No bytes in memory for block starting at 0x0.\">",
+        "<State errored with \"IR decoding error at 0x14000c4d9. You can hook this instruction with a python replacement using project.hook(0x14000c4d9, your_function, length=length_of_instruction).\">",
+        "<State errored with \"IR decoding error at 0x14000c4d9. You can hook this instruction with a python replacement using project.hook(0x14000c4d9, your_function, length=length_of_instruction).\">",
+        "<State errored with \"No bytes in memory for block starting at 0x0.\">",
+        "<State errored with \"IR decoding error at 0x14000d6bb. You can hook this instruction with a python replacement using project.hook(0x14000d6bb, your_function, length=length_of_instruction).\">",
+        "<State errored with \"No bytes in memory for block starting at 0x0.\">",
+        "<State errored with \"No bytes in memory for block starting at 0x0.\">",
+        "<State errored with \"IR decoding error at 0x14000d6bb. You can hook this instruction with a python replacement using project.hook(0x14000d6bb, your_function, length=length_of_instruction).\">",
+        "<State errored with \"No bytes in memory for block starting at 0x0.\">",
+        "<State errored with \"IR decoding error at 0x14000f081. You can hook this instruction with a python replacement using project.hook(0x14000f081, your_function, length=length_of_instruction).\">",
+        "<State errored with \"IR decoding error at 0x14000f081. You can hook this instruction with a python replacement using project.hook(0x14000f081, your_function, length=length_of_instruction).\">",
+        "<State errored with \"No bytes in memory for block starting at 0x0.\">",
+        "<State errored with \"No bytes in memory for block starting at 0x0.\">",
+        "<State errored with \"No bytes in memory for block starting at 0x0.\">",
+        "<State errored with \"No bytes in memory for block starting at 0x0.\">",
+        "<State errored with \"IR decoding error at 0x14000f081. You can hook this instruction with a python replacement using project.hook(0x14000f081, your_function, length=length_of_instruction).\">",
+        "<State errored with \"IR decoding error at 0x14000f081. You can hook this instruction with a python replacement using project.hook(0x14000f081, your_function, length=length_of_instruction).\">",
+        "<State errored with \"No bytes in memory for block starting at 0x0.\">",
+        "<State errored with \"No bytes in memory for block starting at 0x0.\">",
+        "<State errored with \"No bytes in memory for block starting at 0x0.\">",
+        "<State errored with \"No bytes in memory for block starting at 0x0.\">",
+        "<State errored with \"IR decoding error at 0x14000f081. You can hook this instruction with a python replacement using project.hook(0x14000f081, your_function, length=length_of_instruction).\">",
+        "<State errored with \"IR decoding error at 0x14000ee3c. You can hook this instruction with a python replacement using project.hook(0x14000ee3c, your_function, length=length_of_instruction).\">",
+        "<State errored with \"IR decoding error at 0x14000ee3c. You can hook this instruction with a python replacement using project.hook(0x14000ee3c, your_function, length=length_of_instruction).\">",
+        "<State errored with \"No bytes in memory for block starting at 0x0.\">",
+        "<State errored with \"IR decoding error at 0x14000b125. You can hook this instruction with a python replacement using project.hook(0x14000b125, your_function, length=length_of_instruction).\">",
+        "<State errored with \"No bytes in memory for block starting at 0x0.\">",
+        "<State errored with \"IR decoding error at 0x14000b125. You can hook this instruction with a python replacement using project.hook(0x14000b125, your_function, length=length_of_instruction).\">"
+    ]
+}

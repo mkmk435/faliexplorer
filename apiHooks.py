@@ -63,6 +63,126 @@ class HookIoCreateDevice(angr.SimProcedure):
             globals.basic_info["DeviceName"].append(device_name_str)
         return 0
 
+
+class HookWdfDriverCreate(angr.SimProcedure):
+    def run(self, DriverObject, RegistryPath, DriverAttributes, DriverConfig, Driver):
+        if not self.state.solver.is_true(Driver == 0):
+            driver_handle = utils.next_base_addr()
+            self.state.memory.store(
+                Driver,
+                claripy.BVV(driver_handle, self.state.arch.bits),
+                self.state.arch.bytes,
+                endness=self.state.arch.memory_endness,
+                disable_actions=True,
+                inspect=False
+            )
+            self.state.globals['wdf_driver_handle'] = driver_handle
+        return 0
+
+
+class HookWdfDeviceCreate(angr.SimProcedure):
+    def run(self, DeviceInit, DeviceAttributes, Device):
+        device_handle = utils.next_base_addr()
+        self.state.memory.store(
+            device_handle,
+            claripy.BVS('wdf_device', 0x400 * 8),
+            0x400,
+            disable_actions=True,
+            inspect=False
+        )
+
+        if not self.state.solver.is_true(Device == 0):
+            self.state.memory.store(
+                Device,
+                claripy.BVV(device_handle, self.state.arch.bits),
+                self.state.arch.bytes,
+                endness=self.state.arch.memory_endness,
+                disable_actions=True,
+                inspect=False
+            )
+
+        self.state.globals['wdf_device_handle'] = device_handle
+        return 0
+
+
+class HookWdfIoQueueCreate(angr.SimProcedure):
+    def run(self, Device, Config, QueueAttributes, Queue):
+        queue_handle = utils.next_base_addr()
+        self.state.memory.store(
+            queue_handle,
+            claripy.BVS('wdf_queue', 0x200 * 8),
+            0x200,
+            disable_actions=True,
+            inspect=False
+        )
+
+        if not self.state.solver.is_true(Queue == 0):
+            self.state.memory.store(
+                Queue,
+                claripy.BVV(queue_handle, self.state.arch.bits),
+                self.state.arch.bytes,
+                endness=self.state.arch.memory_endness,
+                disable_actions=True,
+                inspect=False
+            )
+
+        self.state.globals['wdf_queue_handle'] = queue_handle
+        return 0
+
+
+def _store_optional_pointer(state, dst, value, size=None):
+    if value is None:
+        return
+
+    if state.solver.is_true(dst == 0):
+        return
+
+    if size is None:
+        size = state.arch.bytes
+
+    if isinstance(value, int):
+        value = claripy.BVV(value, state.arch.bits)
+
+    if value.size() < state.arch.bits:
+        value = claripy.ZeroExt(state.arch.bits - value.size(), value)
+
+    state.memory.store(
+        dst,
+        value,
+        size,
+        endness=state.arch.memory_endness,
+        disable_actions=True,
+        inspect=False
+    )
+
+
+class HookWdfRequestRetrieveInputBuffer(angr.SimProcedure):
+    def run(self, Request, MinimumRequiredLength, Buffer, Length):
+        _store_optional_pointer(self.state, Buffer, globals.SystemBuffer)
+        _store_optional_pointer(self.state, Length, globals.InputBufferLength)
+        return 0
+
+
+class HookWdfRequestRetrieveOutputBuffer(angr.SimProcedure):
+    def run(self, Request, MinimumRequiredLength, Buffer, Length):
+        _store_optional_pointer(self.state, Buffer, globals.SystemBuffer)
+        _store_optional_pointer(self.state, Length, globals.OutputBufferLength)
+        return 0
+
+
+class HookWdfRequestRetrieveUnsafeUserInputBuffer(angr.SimProcedure):
+    def run(self, Request, MinimumRequiredLength, InputBuffer, Length):
+        _store_optional_pointer(self.state, InputBuffer, globals.Type3InputBuffer)
+        _store_optional_pointer(self.state, Length, globals.InputBufferLength)
+        return 0
+
+
+class HookWdfRequestRetrieveUnsafeUserOutputBuffer(angr.SimProcedure):
+    def run(self, Request, MinimumRequiredLength, OutputBuffer, Length):
+        _store_optional_pointer(self.state, OutputBuffer, globals.UserBuffer)
+        _store_optional_pointer(self.state, Length, globals.OutputBufferLength)
+        return 0
+
 # Restituisce EPROCESS tado un pid
 # NTSTATUS PsLookupProcessByProcessId(
 #   [in]  HANDLE    ProcessId,
@@ -604,7 +724,7 @@ class HookMmGetSystemRoutineAddress(angr.SimProcedure):
         for name, proc in hooks.items():
             if name == SystemRoutineName_wstring:
                 addr = utils.next_base_addr()
-                globals.proj.hook(addr, proc(cc=globals.mycc))
+                globals.proj.hook(addr, proc(cc=globals.cc))
                 return addr
 
         return globals.DO_NOTHING

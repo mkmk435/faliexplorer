@@ -1,0 +1,98 @@
+{
+  "driver_name": "echodriver",
+  "generated_at": "2026-05-09T21:14:42.164505",
+  "total_vulnerabilities": 7,
+  "vulnerabilities": [
+    {
+      "timestamp": "2026-05-09T21:14:39.810135",
+      "vulnerability_type": "null pointer dereference - input buffer",
+      "access_type": "read input buffer",
+      "ioctl": "0x221c08",
+      "rip": "0x14000131c",
+      "additional_info": {},
+      "address_info": {
+        "read from": "<BV64 SystemBuffer_30_64 + 0x4>"
+      }
+    },
+    {
+      "timestamp": "2026-05-09T21:14:41.064835",
+      "vulnerability_type": "null pointer dereference - input buffer",
+      "access_type": "read input buffer",
+      "ioctl": "0x221c10",
+      "rip": "0x14000143c",
+      "additional_info": {},
+      "address_info": {
+        "read from": "<BV64 SystemBuffer_30_64>"
+      }
+    },
+    {
+      "timestamp": "2026-05-09T21:14:41.324974",
+      "vulnerability_type": "null pointer dereference - input buffer",
+      "access_type": "read input buffer",
+      "ioctl": "0x221c0c",
+      "rip": "0x140001421",
+      "additional_info": {},
+      "address_info": {
+        "read from": "<BV64 SystemBuffer_30_64>"
+      }
+    },
+    {
+      "timestamp": "2026-05-09T21:14:41.516958",
+      "vulnerability_type": "null pointer dereference - input buffer",
+      "access_type": "read input buffer",
+      "ioctl": "0x221c04",
+      "rip": "0x140001280",
+      "additional_info": {},
+      "address_info": {
+        "read from": "<BV64 SystemBuffer_30_64>"
+      }
+    },
+    {
+      "timestamp": "2026-05-09T21:14:42.080572",
+      "vulnerability_type": "lookup process",
+      "access_type": "PsLookupProcessByProcessId - ProcessId tainted",
+      "ioctl": "0x221c04",
+      "rip": "0x1401000a8",
+      "additional_info": {
+        "ProcessId": "<BV64 0x0 .. *<BV64 SystemBuffer_30_64>_50_4096[31:0]>",
+        "Process": "<BV64 0x7fffffffffefee8>"
+      },
+      "address_info": {
+        "return address": "0x1400015ae"
+      }
+    },
+    {
+      "timestamp": "2026-05-09T21:14:42.138023",
+      "vulnerability_type": "open object",
+      "access_type": "ObOpenObjectByPointer - Object controllable",
+      "ioctl": "0x221c04",
+      "rip": "0x1401000b0",
+      "additional_info": {
+        "Object": "<BV64 PsLookupProcessByProcessId_0x1400015ae_55_64>",
+        "HandleAttributes": "<BV64 0x0>",
+        "PassedAccessState": "<BV64 0x0>",
+        "DesiredAccess": "<BV64 0x19>",
+        "ObjectType": "<BV64 *PsProcessType_33_64>",
+        "AccessMode": "<BV64 mem_7fffffffffefeb9_56_56{UNINITIALIZED} .. 0>",
+        "Handle": "<BV64 0x7fffffffffefef0>"
+      },
+      "address_info": {
+        "return address": "0x1400015e6"
+      }
+    },
+    {
+      "timestamp": "2026-05-09T21:14:42.164440",
+      "vulnerability_type": "terminate process",
+      "access_type": "ZwTerminateProcess - ProcessHandle controllable",
+      "ioctl": "0x221c04",
+      "rip": "0x140100098",
+      "additional_info": {
+        "ProcessHandle": "<BV64 ObOpenObjectByPointer_0x1400015e6_57_64>",
+        "ExitStatus": "<BV64 0x0>"
+      },
+      "address_info": {
+        "return address": "0x1400015f7"
+      }
+    }
+  ]
+}

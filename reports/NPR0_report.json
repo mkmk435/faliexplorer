@@ -1,0 +1,34 @@
+{
+  "driver_name": "NPR0",
+  "generated_at": "2026-05-09T22:14:22.308918",
+  "total_vulnerabilities": 2,
+  "vulnerabilities": [
+    {
+      "timestamp": "2026-05-09T22:14:21.520770",
+      "vulnerability_type": "arbitrary out vuln",
+      "access_type": "",
+      "ioctl": "0x9c40a0dc",
+      "rip": "0x14000155b",
+      "additional_info": {
+        "I/O Port": "<BV32 *<BV64 SystemBuffer_20_64>_23_4096[31:0]>",
+        "Value": "<BV32 0x0 .. *<BV64 SystemBuffer_20_64>_23_4096[47:32]>"
+      },
+      "address_info": {}
+    },
+    {
+      "timestamp": "2026-05-09T22:14:22.308864",
+      "vulnerability_type": "map physical memory",
+      "access_type": "MmMapIoSpace - PhysicalAddress and NumberOfBytes controllable",
+      "ioctl": "0x9c406104",
+      "rip": "0x140100120",
+      "additional_info": {
+        "PhysicalAddress": "<BV64 *<BV64 SystemBuffer_20_64>_27_4096[63:0]>",
+        "NumberOfBytes": "<BV64 0x0 .. *<BV64 SystemBuffer_20_64>_27_4096[95:64] * *<BV64 SystemBuffer_20_64>_27_4096[127:96]>",
+        "CacheType": "<BV64 0x0>"
+      },
+      "address_info": {
+        "return address": "0x140001431"
+      }
+    }
+  ]
+}

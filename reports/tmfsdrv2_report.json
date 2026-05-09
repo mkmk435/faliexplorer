@@ -1,0 +1,68 @@
+{
+  "driver_name": "tmfsdrv2",
+  "generated_at": "2026-05-09T21:31:39.288652",
+  "total_vulnerabilities": 4,
+  "vulnerabilities": [
+    {
+      "timestamp": "2026-05-09T21:30:04.079466",
+      "vulnerability_type": "double free",
+      "access_type": "ExFreePoolWithTag - buffer already freed",
+      "ioctl": "0x22e05c",
+      "rip": "0x140100378",
+      "additional_info": {
+        "P": "<BV64 ExAllocatePoolWithTag_0x140001495_58_64>",
+        "Tag": "<BV64 0x0>"
+      },
+      "address_info": {
+        "return address": "0x1400373ae"
+      }
+    },
+    {
+      "timestamp": "2026-05-09T21:30:31.230488",
+      "vulnerability_type": "open object",
+      "access_type": "ObOpenObjectByPointer - Object controllable",
+      "ioctl": "0x22e014",
+      "rip": "0x140100088",
+      "additional_info": {
+        "Object": "<BV64 PsLookupProcessByProcessId_0x14002cab8_272_64>",
+        "HandleAttributes": "<BV64 0x200>",
+        "PassedAccessState": "<BV64 0x0>",
+        "DesiredAccess": "<BV64 0x0>",
+        "ObjectType": "<BV64 0x0>",
+        "AccessMode": "<BV64 mem_7fffffffffefa39_273_56{UNINITIALIZED} .. 0>",
+        "Handle": "<BV64 0x7fffffffffefaf0>"
+      },
+      "address_info": {
+        "return address": "0x14002cafa"
+      }
+    },
+    {
+      "timestamp": "2026-05-09T21:30:40.070001",
+      "vulnerability_type": "double free",
+      "access_type": "ExFreePoolWithTag - buffer already freed",
+      "ioctl": "0x22e014",
+      "rip": "0x140100378",
+      "additional_info": {
+        "P": "<BV64 ExAllocatePoolWithTag_0x140001495_275_64>",
+        "Tag": "<BV64 0x0>"
+      },
+      "address_info": {
+        "return address": "0x14002d390"
+      }
+    },
+    {
+      "timestamp": "2026-05-09T21:31:39.288591",
+      "vulnerability_type": "double free",
+      "access_type": "ExFreePoolWithTag - buffer already freed",
+      "ioctl": "0x22e030",
+      "rip": "0x140100378",
+      "additional_info": {
+        "P": "<BV64 0xffffffffffffffc0 + mem_ffffffffffffef08_384_64{UNINITIALIZED}>",
+        "Tag": "<BV64 0x0>"
+      },
+      "address_info": {
+        "return address": "0x140032e24"
+      }
+    }
+  ]
+}

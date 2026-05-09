@@ -63,6 +63,13 @@ def find_vulns(driver_path, ioctl_handler_addr, ioctl_handler_state, specific_io
     globals.phase = 2
     irp = claripy.BVS('irp_buf', 8 * 0x200)
     device_object_addr = claripy.BVS('device_object_addr', ioctl_handler_state.arch.bits)
+    ioctl_handler_kind = ioctl_handler_state.globals.get('ioctl_handler_kind')
+    if globals.driver_framework == 'kmdf/wdf' or ioctl_handler_kind == 'wdm':
+        device_object_addr = ioctl_handler_state.globals.get('device_object_addr', device_object_addr)
+
+    major_func, minor_func, globals.OutputBufferLength, globals.InputBufferLength, globals.IoControlCode = map(lambda x: claripy.BVS(*x), [
+    ("MajorFunction", 8), ("MinorFunction", 8), ('OutputBufferLength', 32), ('InputBufferLength', 32),
+    ('IoControlCode', 32)])
 
     # ioctl_handler_state.globals['open_section_handles'] = ()
 
@@ -78,13 +85,36 @@ def find_vulns(driver_path, ioctl_handler_addr, ioctl_handler_state, specific_io
     ioctl_handler_state.globals['freed_buffers'] = []
     # ioctl_handler_state.globals['tainted_translated_addresses'] = ()
 
-    state = globals.proj.factory.call_state(
-        ioctl_handler_addr,
-        device_object_addr,
-        globals.irp_addr,
-        cc=globals.cc,
-        base_state=ioctl_handler_state
-    )
+    def extend_to_arch(value):
+        if value.size() >= ioctl_handler_state.arch.bits:
+            return value
+        return claripy.ZeroExt(ioctl_handler_state.arch.bits - value.size(), value)
+
+    if ioctl_handler_kind == 'wdf_evt_io_device_control':
+        wdf_queue = ioctl_handler_state.globals.get(
+            'wdf_queue_handle',
+            claripy.BVS('wdf_queue_handle', ioctl_handler_state.arch.bits)
+        )
+        wdf_request = ioctl_handler_state.globals.get('wdf_request_handle', utils.next_base_addr())
+        state = globals.proj.factory.call_state(
+            ioctl_handler_addr,
+            wdf_queue,
+            wdf_request,
+            extend_to_arch(globals.OutputBufferLength),
+            extend_to_arch(globals.InputBufferLength),
+            extend_to_arch(globals.IoControlCode),
+            cc=globals.cc,
+            base_state=ioctl_handler_state
+        )
+        state.globals['wdf_request_handle'] = wdf_request
+    else:
+        state = globals.proj.factory.call_state(
+            ioctl_handler_addr,
+            device_object_addr,
+            globals.irp_addr,
+            cc=globals.cc,
+            base_state=ioctl_handler_state
+        )
     
     # symbolic cr8 to explore also higher IRQL areas
     cr8 = claripy.BVS('cr8', state.arch.bits)
@@ -95,23 +125,59 @@ def find_vulns(driver_path, ioctl_handler_addr, ioctl_handler_state, specific_io
     globals.Type3InputBuffer = claripy.BVS('Type3InputBuffer', state.arch.bits)
     globals.UserBuffer = claripy.BVS('UserBuffer', state.arch.bits)
 
+    def materialize_indirect_wdf_request_buffer(s):
+        if ioctl_handler_kind != 'wdf_evt_io_device_control':
+            return
+
+        try:
+            request_arg = utils._call_arg(s, 0)
+            expected_request = s.globals.get('wdf_request_handle')
+            if isinstance(expected_request, int):
+                expected_request = claripy.BVV(expected_request, s.arch.bits)
+            if expected_request is None or not s.solver.satisfiable(extra_constraints=[request_arg == expected_request]):
+                return
+
+            buffer_out = utils._call_arg(s, 2)
+            if not utils.is_stack_address(s, buffer_out):
+                return
+
+            s.memory.store(
+                buffer_out,
+                globals.SystemBuffer,
+                s.arch.bytes,
+                endness=s.arch.memory_endness,
+                disable_actions=True,
+                inspect=False
+            )
+
+            length_out = utils._call_arg(s, 3)
+            if not s.solver.is_true(length_out == 0) and utils.is_stack_address(s, length_out):
+                s.memory.store(
+                    length_out,
+                    extend_to_arch(globals.InputBufferLength),
+                    s.arch.bytes,
+                    endness=s.arch.memory_endness,
+                    disable_actions=True,
+                    inspect=False
+                )
+        except Exception:
+            return
+
 
 
 
     state.inspect.b('mem_read', when=angr.BP_BEFORE, action=memHooks.b_mem_read)
     state.inspect.b('mem_write', when=angr.BP_BEFORE, action=memHooks.b_mem_write)
     # state.inspect.b('call', when=angr.BP_BEFORE, action=memHooks.b_call)
+    if ioctl_handler_kind == 'wdf_evt_io_device_control':
+        state.inspect.b('call', when=angr.BP_BEFORE, action=materialize_indirect_wdf_request_buffer)
+        state.inspect.b('call', when=angr.BP_BEFORE, action=memHooks.b_call)
     state.inspect.b('call', when=angr.BP_BEFORE, action=memHooks.inspect_args_hook)
     #state.inspect.b('call', when=angr.BP_BEFORE, action=memHooks.universal_hook)
 
 
 
     state.memory.store(globals.irp_addr, irp)
-
-        # Crea alcuni campi di IO_STACK_LOCS come BVS
-    major_func, minor_func, globals.OutputBufferLength, globals.InputBufferLength, globals.IoControlCode = map(lambda x: claripy.BVS(*x), [
-    ("MajorFunction", 8), ("MinorFunction", 8), ('OutputBufferLength', 32), ('InputBufferLength', 32),
-    ('IoControlCode', 32)])
 
     utils.fixup_import_symbols(state)
 
@@ -131,7 +197,7 @@ def find_vulns(driver_path, ioctl_handler_addr, ioctl_handler_state, specific_io
     _params.DeviceIoControl.Type3InputBuffer = globals.Type3InputBuffer
 
     # Add check for custom ioctl codes
-    if specific_ioctl_code:
+    if specific_ioctl_code is not None:
         _params.DeviceIoControl.IoControlCode.val = specific_ioctl_code
         state.add_constraints(globals.IoControlCode == specific_ioctl_code)
     else:
@@ -225,6 +291,13 @@ def hookDriver(driver_path):
     globals.proj.hook_symbol('IoCreateSymbolicLink', apiHooks.HookIoCreateSymbolicLink(cc=globals.cc))
     globals.proj.hook_symbol('IoCreateDevice', apiHooks.HookIoCreateDevice(cc=globals.cc))
     globals.proj.hook_symbol('IoStartPacket', apiHooks.HookIoStartPacket(cc=globals.cc))
+    globals.proj.hook_symbol('WdfDriverCreate', apiHooks.HookWdfDriverCreate(cc=globals.cc))
+    globals.proj.hook_symbol('WdfDeviceCreate', apiHooks.HookWdfDeviceCreate(cc=globals.cc))
+    globals.proj.hook_symbol('WdfIoQueueCreate', apiHooks.HookWdfIoQueueCreate(cc=globals.cc))
+    globals.proj.hook_symbol('WdfRequestRetrieveInputBuffer', apiHooks.HookWdfRequestRetrieveInputBuffer(cc=globals.cc))
+    globals.proj.hook_symbol('WdfRequestRetrieveOutputBuffer', apiHooks.HookWdfRequestRetrieveOutputBuffer(cc=globals.cc))
+    globals.proj.hook_symbol('WdfRequestRetrieveUnsafeUserInputBuffer', apiHooks.HookWdfRequestRetrieveUnsafeUserInputBuffer(cc=globals.cc))
+    globals.proj.hook_symbol('WdfRequestRetrieveUnsafeUserOutputBuffer', apiHooks.HookWdfRequestRetrieveUnsafeUserOutputBuffer(cc=globals.cc))
 
 
     
@@ -305,10 +378,13 @@ if __name__ == "__main__":
     if globals.args.address:
         ioctl_handler, ioctl_handler_state = int(globals.args.address, 16), None
     else:
-        if globals.driver_framework == 'kmdf/wdf':
-            ioctl_handler, ioctl_handler_state = utils.find_ioctl_handler_wdf(driver)
-        else:
-            ioctl_handler, ioctl_handler_state = utils.find_ioctl_handler(driver)
+        ioctl_handler, ioctl_handler_state = utils.find_ioctl_handler(driver)
+        if not ioctl_handler_state:
+
+            ioctl_handler, ioctl_handler_state = utils.find_ioctl_handler_wdf2(driver)
+    if not ioctl_handler:
+        print("ERROR: unable to find IOCTL handler")
+        raise SystemExit(1)
     print(f"IOCTL handler address: {hex(ioctl_handler)}")
     if not ioctl_handler_state:
         # utils.print_info(f'Use blank state to hunt vulnerabilities.')
@@ -337,4 +413,3 @@ if __name__ == "__main__":
         # If no specific IOCTL codes, analyze all
         print("Analyzing all IoControlCodes...")
         find_vulns(driver, ioctl_handler, ioctl_handler_state)
-
