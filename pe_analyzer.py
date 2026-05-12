@@ -149,12 +149,11 @@ def main():
 
     # Functions to search for
     functions_to_search = [
-        # "ZwTerminateProcess", 
+        "ZwTerminateProcess", 
         # "ExAllocatePoolWithTag", 
         # "IoCreateDevice",
         # "KeStackAttachProcess",
         # "MmMapIoSpace"
-        "ZwWriteFile"
     ]
 
     os.system("") # Init ANSI colors for older terminals

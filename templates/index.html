@@ -5,7 +5,7 @@
 {% block content %}
 <div class="container">
     <div class="header">
-        <h1>🔐 Vulnerability Report Viewer</h1>
+        <h1>Vulnerability Report Viewer</h1>
         <p>Analyze and view kernel driver vulnerability analysis reports</p>
     </div>
 
@@ -32,8 +32,8 @@
                 <h3 style="margin-bottom: 15px; color: #555;">Load Reports Directory</h3>
                 <form id="directoryForm" enctype="multipart/form-data">
                     <div class="form-group">
-                        <label for="directoryFiles">Select Directory with JSON Reports:</label>
-                        <input type="file" id="directoryFiles" name="files" webkitdirectory directory multiple accept=".json" class="form-control" required>
+                        <label for="directoryFiles">Select Directory with JSON Reports and Optional Driver Binaries:</label>
+                        <input type="file" id="directoryFiles" name="files" webkitdirectory directory multiple accept=".json,.sys,.dll,.exe" class="form-control" required>
                     </div>
                     <button type="submit" class="btn">
                         <i class="fas fa-folder-open"></i> Load Directory
@@ -50,11 +50,9 @@
     </div>
 
     <div id="tabsContainer" class="tabs hidden"></div>
-
+    <div id="driverFilterContainer" class="hidden"></div>
     <div id="statsContainer" class="hidden"></div>
-
     <div id="filterSection" class="hidden"></div>
-
     <div id="vulnerabilitiesContainer" class="hidden"></div>
 </div>
 {% endblock %}
@@ -62,9 +60,9 @@
 {% block scripts %}
 <script>
 let currentReport = null;
+let reportSummaries = {};
 
 $(document).ready(function() {
-    // Load single file form
     $('#singleFileForm').on('submit', function(e) {
         e.preventDefault();
         const formData = new FormData(this);
@@ -80,7 +78,9 @@ $(document).ready(function() {
             contentType: false,
             success: function(response) {
                 if (response.success) {
+                    reportSummaries[response.report_name] = response.summary || buildReportSummary(response.report_name, response.data);
                     addReportTab(response.report_name);
+                    renderDriverClassFilter();
                     selectReport(response.report_name);
                     showAlert(`Successfully loaded ${response.report_name}`, 'success');
                 } else {
@@ -88,7 +88,7 @@ $(document).ready(function() {
                 }
             },
             error: function(xhr) {
-                showAlert('Error loading report: ' + xhr.responseJSON.error, 'error');
+                showAlert('Error loading report: ' + getErrorMessage(xhr), 'error');
             },
             complete: function() {
                 $('#singleFileForm button').prop('disabled', false).html('<i class="fas fa-file-upload"></i> Load Report');
@@ -96,7 +96,6 @@ $(document).ready(function() {
         });
     });
 
-    // Load directory form
     $('#directoryForm').on('submit', function(e) {
         e.preventDefault();
         const formData = new FormData(this);
@@ -112,16 +111,22 @@ $(document).ready(function() {
             contentType: false,
             success: function(response) {
                 if (response.success) {
+                    Object.assign(reportSummaries, response.summaries || {});
                     Object.keys(response.loaded_reports).forEach(reportName => {
+                        if (!reportSummaries[reportName]) {
+                            reportSummaries[reportName] = buildReportSummary(reportName, response.loaded_reports[reportName]);
+                        }
                         addReportTab(reportName);
                     });
 
-                    if (Object.keys(response.loaded_reports).length > 0) {
-                        const firstReport = Object.keys(response.loaded_reports)[0];
-                        selectReport(firstReport);
+                    renderDriverClassFilter();
+
+                    const reportNames = Object.keys(response.loaded_reports);
+                    if (reportNames.length > 0) {
+                        selectReport(reportNames[0]);
                     }
 
-                    let message = `Successfully loaded ${Object.keys(response.loaded_reports).length} reports`;
+                    let message = `Successfully loaded ${reportNames.length} reports`;
                     if (response.errors && response.errors.length > 0) {
                         message += `. Errors: ${response.errors.join(', ')}`;
                     }
@@ -131,7 +136,7 @@ $(document).ready(function() {
                 }
             },
             error: function(xhr) {
-                showAlert('Error loading directory: ' + xhr.responseJSON.error, 'error');
+                showAlert('Error loading directory: ' + getErrorMessage(xhr), 'error');
             },
             complete: function() {
                 $('#directoryForm button').prop('disabled', false).html('<i class="fas fa-folder-open"></i> Load Directory');
@@ -139,7 +144,6 @@ $(document).ready(function() {
         });
     });
 
-    // Clear all reports
     $('#clearAllBtn').on('click', function() {
         if (confirm('Are you sure you want to clear all loaded reports?')) {
             $.ajax({
@@ -147,14 +151,16 @@ $(document).ready(function() {
                 type: 'DELETE',
                 success: function() {
                     $('#tabsContainer').addClass('hidden').empty();
+                    $('#driverFilterContainer').addClass('hidden').empty();
                     $('#statsContainer').addClass('hidden').empty();
                     $('#filterSection').addClass('hidden').empty();
                     $('#vulnerabilitiesContainer').addClass('hidden').empty();
                     currentReport = null;
+                    reportSummaries = {};
                     showAlert('All reports cleared', 'success');
                 },
                 error: function(xhr) {
-                    showAlert('Error clearing reports: ' + xhr.responseJSON.error, 'error');
+                    showAlert('Error clearing reports: ' + getErrorMessage(xhr), 'error');
                 }
             });
         }
@@ -165,26 +171,31 @@ function addReportTab(reportName) {
     const tabsContainer = $('#tabsContainer');
     tabsContainer.removeClass('hidden');
 
-    // Check if tab already exists
-    if ($(`#tab-${reportName.replace(/[^a-zA-Z0-9]/g, '_')}`).length > 0) {
+    if (findReportTab(reportName).length > 0) {
         return;
     }
 
-    const tabId = `tab-${reportName.replace(/[^a-zA-Z0-9]/g, '_')}`;
-    const tab = $(`
-        <div class="tab" id="${tabId}" onclick="selectReport('${reportName}')">
-            <span>${reportName}</span>
-            <span class="close-btn" onclick="event.stopPropagation(); removeReport('${reportName}')">×</span>
-        </div>
-    `);
+    const tab = $('<div class="tab"></div>').data('reportName', reportName);
+    $('<span></span>').text(reportName).appendTo(tab);
+    $('<span class="close-btn">x</span>').on('click', function(event) {
+        event.stopPropagation();
+        removeReport(reportName);
+    }).appendTo(tab);
+    tab.on('click', function() {
+        selectReport(reportName);
+    });
     tabsContainer.append(tab);
 }
 
+function findReportTab(reportName) {
+    return $('.tab').filter(function() {
+        return $(this).data('reportName') === reportName;
+    });
+}
+
 function selectReport(reportName) {
-    // Update active tab
     $('.tab').removeClass('active');
-    const tabId = `tab-${reportName.replace(/[^a-zA-Z0-9]/g, '_')}`;
-    $(`#${tabId}`).addClass('active');
+    findReportTab(reportName).addClass('active');
 
     currentReport = reportName;
     loadReportData(reportName);
@@ -195,15 +206,14 @@ function removeReport(reportName) {
         url: `/api/remove_report/${encodeURIComponent(reportName)}`,
         type: 'DELETE',
         success: function() {
-            const tabId = `tab-${reportName.replace(/[^a-zA-Z0-9]/g, '_')}`;
-            $(`#${tabId}`).remove();
+            findReportTab(reportName).remove();
+            delete reportSummaries[reportName];
+            renderDriverClassFilter();
 
             if (currentReport === reportName) {
-                const remainingTabs = $('.tab');
-                if (remainingTabs.length > 0) {
-                    const firstTab = remainingTabs.first();
-                    const firstReportName = firstTab.find('span:first').text();
-                    selectReport(firstReportName);
+                const nextTab = $('.tab:visible').first();
+                if (nextTab.length > 0) {
+                    selectReport(nextTab.data('reportName'));
                 } else {
                     $('#statsContainer').addClass('hidden').empty();
                     $('#filterSection').addClass('hidden').empty();
@@ -214,60 +224,82 @@ function removeReport(reportName) {
             showAlert(`Removed ${reportName}`, 'success');
         },
         error: function(xhr) {
-            showAlert('Error removing report: ' + xhr.responseJSON.error, 'error');
+            showAlert('Error removing report: ' + getErrorMessage(xhr), 'error');
         }
     });
 }
 
 function loadReportData(reportName) {
-    // Load statistics
     $.get(`/api/get_statistics/${encodeURIComponent(reportName)}`, function(stats) {
+        updateReportSummaryFromStats(reportName, stats);
         displayStats(stats);
+    }).fail(function(xhr) {
+        showAlert('Error loading statistics: ' + getErrorMessage(xhr), 'error');
     });
 
-    // Load full report data for filtering
     $.get(`/api/get_report/${encodeURIComponent(reportName)}`, function(data) {
         displayFilters(data);
         displayVulnerabilities(data);
+    }).fail(function(xhr) {
+        showAlert('Error loading report: ' + getErrorMessage(xhr), 'error');
     });
 }
 
 function displayStats(stats) {
     const container = $('#statsContainer');
     container.removeClass('hidden');
+    const metadata = stats.driver_metadata || {};
+    const signature = metadata.signature || {};
+    const blocklist = metadata.microsoft_blocklist || {};
+    const hvci = metadata.hvci || {};
+    const imports = metadata.imports || {};
 
-    let html = `
+    const html = `
         <div class="alert alert-info">
-            <strong>Driver:</strong> ${stats.driver_name} |
-            <strong>Generated:</strong> ${new Date(stats.generated_at).toLocaleString()}
+            <strong>Driver:</strong> ${escapeHtml(stats.driver_name || 'Unknown')} |
+            <strong>Generated:</strong> ${escapeHtml(formatDate(stats.generated_at))}
         </div>
         <div class="stats-grid">
             <div class="stat-card">
                 <div class="stat-label">Total Vulnerabilities</div>
-                <div class="stat-value">${stats.total_vulnerabilities}</div>
+                <div class="stat-value">${escapeHtml(stats.total_vulnerabilities)}</div>
             </div>
             <div class="stat-card">
-                <div class="stat-label">Unique Vulnerability Types</div>
-                <div class="stat-value">${stats.unique_vuln_types}</div>
+                <div class="stat-label">Vulnerability Classes</div>
+                <div class="stat-value">${escapeHtml(stats.unique_vuln_classes)}</div>
             </div>
             <div class="stat-card">
                 <div class="stat-label">Unique Access Types</div>
-                <div class="stat-value">${stats.unique_access_types}</div>
+                <div class="stat-value">${escapeHtml(stats.unique_access_types)}</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-label">HVCI</div>
+                <div class="stat-value" style="font-size: 1.1em;">${escapeHtml(hvci.status || 'Unknown')}</div>
             </div>
         </div>
 
         <div class="breakdown-grid">
             <div class="breakdown-card">
+                <div class="breakdown-title">Driver Security</div>
+                <div class="breakdown-item"><span>Driver file</span><span style="font-weight: bold;">${escapeHtml(metadata.driver_file || 'Not found')}</span></div>
+                <div class="breakdown-item"><span>Signature</span><span style="font-weight: bold;">${escapeHtml(signature.signature_type || 'Unknown')}</span></div>
+                <div class="breakdown-item"><span>Blocklist</span><span style="font-weight: bold;">${escapeHtml(blocklist.status || 'Not checked')}</span></div>
+                <div class="breakdown-item"><span>HVCI loadable</span><span style="font-weight: bold;">${escapeHtml(formatTriState(hvci.loadable_with_hvci))}</span></div>
+                <div class="breakdown-item"><span>Imports</span><span style="font-weight: bold;">${escapeHtml(formatImportCount(imports))}</span></div>
+                ${renderImportsDetails(imports)}
+                ${renderMetadataDetails(metadata)}
+            </div>
+            <div class="breakdown-card">
+                <div class="breakdown-title">By Vulnerability Class</div>
+                ${renderBreakdown(stats.vuln_classes_breakdown)}
+            </div>
+            <div class="breakdown-card">
                 <div class="breakdown-title">By Vulnerability Type</div>
-                ${Object.entries(stats.vuln_types_breakdown).map(([type, count]) =>
-                    `<div class="breakdown-item"><span>${type}</span><span style="font-weight: bold;">${count}</span></div>`
-                ).join('')}
+                ${renderBreakdown(stats.vuln_types_breakdown)}
             </div>
             <div class="breakdown-card">
                 <div class="breakdown-title">By Access Type</div>
-                ${Object.entries(stats.access_types_breakdown).map(([type, count]) =>
-                    `<div class="breakdown-item"><span>${type}</span><span style="font-weight: bold;">${count}</span></div>`
-                ).join('')}
+                ${renderBreakdown(stats.access_types_breakdown)}
             </div>
         </div>
     `;
@@ -278,21 +310,27 @@ function displayStats(stats) {
 function displayFilters(data) {
     const container = $('#filterSection');
     container.removeClass('hidden');
+    const vulnerabilities = data.vulnerabilities || [];
 
-    const vulnTypes = [...new Set(data.vulnerabilities.map(v => v.vulnerability_type))];
-    const accessTypes = [...new Set(data.vulnerabilities.map(v => v.access_type))];
+    const vulnClasses = [...new Set(vulnerabilities.map(v => v.vulnerability_class || 'Other'))].sort();
+    const vulnTypes = [...new Set(vulnerabilities.map(v => v.vulnerability_type || 'Unknown'))].sort();
+    const accessTypes = [...new Set(vulnerabilities.map(v => v.access_type || ''))].filter(Boolean).sort();
 
-    let html = `
+    const html = `
         <div class="filter-section">
             <label style="font-weight: 600;">Filters:</label>
-            <input type="text" class="filter-input" id="searchInput" placeholder="Search by IOCTL, RIP, or type..." onkeyup="applyFilters()">
+            <input type="text" class="filter-input" id="searchInput" placeholder="Search by IOCTL, RIP, type, or class..." onkeyup="applyFilters()">
+            <select class="filter-input" id="vulnClassFilter" onchange="applyFilters()">
+                <option value="">All Vulnerability Classes</option>
+                ${vulnClasses.map(type => `<option value="${escapeHtml(type)}">${escapeHtml(type)}</option>`).join('')}
+            </select>
             <select class="filter-input" id="vulnTypeFilter" onchange="applyFilters()">
                 <option value="">All Vulnerability Types</option>
-                ${vulnTypes.map(type => `<option value="${type}">${type}</option>`).join('')}
+                ${vulnTypes.map(type => `<option value="${escapeHtml(type)}">${escapeHtml(type)}</option>`).join('')}
             </select>
             <select class="filter-input" id="accessTypeFilter" onchange="applyFilters()">
                 <option value="">All Access Types</option>
-                ${accessTypes.map(type => `<option value="${type}">${type}</option>`).join('')}
+                ${accessTypes.map(type => `<option value="${escapeHtml(type)}">${escapeHtml(type)}</option>`).join('')}
             </select>
         </div>
     `;
@@ -304,21 +342,24 @@ function applyFilters() {
     if (!currentReport) return;
 
     const searchText = $('#searchInput').val().toLowerCase();
+    const vulnClassFilter = $('#vulnClassFilter').val();
     const vulnTypeFilter = $('#vulnTypeFilter').val();
     const accessTypeFilter = $('#accessTypeFilter').val();
 
     $.get(`/api/get_report/${encodeURIComponent(currentReport)}`, function(data) {
-        const filteredVulns = data.vulnerabilities.filter(vuln => {
+        const filteredVulns = (data.vulnerabilities || []).filter(vuln => {
             const matchesSearch = !searchText ||
-                vuln.ioctl.toLowerCase().includes(searchText) ||
-                vuln.rip.toLowerCase().includes(searchText) ||
-                vuln.vulnerability_type.toLowerCase().includes(searchText) ||
-                vuln.access_type.toLowerCase().includes(searchText);
+                safeLower(vuln.ioctl).includes(searchText) ||
+                safeLower(vuln.rip).includes(searchText) ||
+                safeLower(vuln.vulnerability_type).includes(searchText) ||
+                safeLower(vuln.vulnerability_class).includes(searchText) ||
+                safeLower(vuln.access_type).includes(searchText);
 
+            const matchesVulnClass = !vulnClassFilter || vuln.vulnerability_class === vulnClassFilter;
             const matchesVulnType = !vulnTypeFilter || vuln.vulnerability_type === vulnTypeFilter;
             const matchesAccessType = !accessTypeFilter || vuln.access_type === accessTypeFilter;
 
-            return matchesSearch && matchesVulnType && matchesAccessType;
+            return matchesSearch && matchesVulnClass && matchesVulnType && matchesAccessType;
         });
 
         displayVulnerabilities({...data, vulnerabilities: filteredVulns});
@@ -328,50 +369,54 @@ function applyFilters() {
 function displayVulnerabilities(data) {
     const container = $('#vulnerabilitiesContainer');
     container.removeClass('hidden');
+    const vulnerabilities = data.vulnerabilities || [];
 
-    if (data.vulnerabilities.length === 0) {
+    if (vulnerabilities.length === 0) {
         container.html('<div class="empty-state"><h2>No vulnerabilities found</h2><p>Try adjusting your filters</p></div>');
         return;
     }
 
     let html = `<div class="vulnerabilities-list">
-        <h2 style="margin-bottom: 20px; color: #333;"><i class="fas fa-bug"></i> Vulnerabilities (${data.vulnerabilities.length})</h2>
+        <h2 style="margin-bottom: 20px; color: #333;"><i class="fas fa-bug"></i> Vulnerabilities (${vulnerabilities.length})</h2>
     `;
 
-    data.vulnerabilities.forEach((vuln, index) => {
+    vulnerabilities.forEach((vuln, index) => {
+        const addressInfo = vuln.address_info || {};
+        const additionalInfo = vuln.additional_info || {};
         html += `
             <div class="vuln-item">
                 <div class="vuln-header">
                     <span class="vuln-type">#${index + 1}</span>
-                    <span class="vuln-badge badge-type">${vuln.vulnerability_type}</span>
-                    <span class="vuln-badge badge-access">${vuln.access_type}</span>
+                    <span class="vuln-badge badge-type">${escapeHtml(vuln.vulnerability_class || 'Other')}</span>
+                    <span class="vuln-badge badge-type">${escapeHtml(vuln.vulnerability_type || 'Unknown')}</span>
+                    ${vuln.access_type ? `<span class="vuln-badge badge-access">${escapeHtml(vuln.access_type)}</span>` : ''}
                 </div>
                 <div class="vuln-body">
                     <div class="vuln-field">
                         <div class="vuln-field-label">IOCTL</div>
-                        <div class="vuln-field-value">${vuln.ioctl}</div>
+                        <div class="vuln-field-value">${escapeHtml(vuln.ioctl || '')}</div>
                     </div>
                     <div class="vuln-field">
                         <div class="vuln-field-label">RIP (Instruction Pointer)</div>
-                        <div class="vuln-field-value">${vuln.rip}</div>
+                        <div class="vuln-field-value">${escapeHtml(vuln.rip || '')}</div>
                     </div>
-                    ${Object.entries(vuln.address_info).map(([key, value]) =>
+                    ${Object.entries(addressInfo).map(([key, value]) =>
                         `<div class="vuln-field">
-                            <div class="vuln-field-label">${key}</div>
-                            <div class="vuln-field-value">${value}</div>
+                            <div class="vuln-field-label">${escapeHtml(key)}</div>
+                            <div class="vuln-field-value">${escapeHtml(value)}</div>
                         </div>`
                     ).join('')}
                 </div>
-                ${Object.keys(vuln.additional_info).length > 0 ? `
+                ${Object.keys(additionalInfo).length > 0 ? `
                     <div style="margin-top: 10px; padding-top: 10px; border-top: 1px solid #eee;">
                         <details>
                             <summary style="font-weight: 600; color: #666; cursor: pointer;">Additional Information</summary>
-                            <pre style="margin-top: 10px; padding: 10px; background: #f9f9f9; border-radius: 5px; overflow-x: auto; font-size: 0.9em;">${JSON.stringify(vuln.additional_info, null, 2)}</pre>
+                            <pre style="margin-top: 10px; padding: 10px; background: #f9f9f9; border-radius: 5px; overflow-x: auto; font-size: 0.9em;">${escapeHtml(JSON.stringify(additionalInfo, null, 2))}</pre>
                         </details>
                     </div>
                 ` : ''}
                 <div class="timestamp" style="margin-top: 10px;">
-                    Found: ${new Date(vuln.timestamp).toLocaleString()}
+                    Found: ${escapeHtml(formatDate(vuln.timestamp))}
                 </div>
             </div>
         `;
@@ -381,17 +426,295 @@ function displayVulnerabilities(data) {
     container.html(html);
 }
 
+function renderDriverClassFilter() {
+    const container = $('#driverFilterContainer');
+    const selectedKeyword = $('#driverKeywordFilter').val() || '';
+    const selected = $('#driverClassFilter').val() || '';
+    const selectedHvci = $('#driverHvciFilter').val() || '';
+    const selectedBlocklist = $('#driverBlocklistFilter').val() || '';
+    const classes = [...new Set(Object.values(reportSummaries).flatMap(summary => summary.vulnerability_classes || []))].sort();
+
+    if (Object.keys(reportSummaries).length === 0) {
+        container.addClass('hidden').empty();
+        return;
+    }
+
+    container.removeClass('hidden');
+    const html = `
+        <div class="filter-section">
+            <label style="font-weight: 600;">Driver filters:</label>
+            <input type="text" class="filter-input" id="driverKeywordFilter" placeholder="Search drivers, imports, hashes..." oninput="applyDriverClassFilter()" style="min-width: 260px;">
+            <select class="filter-input" id="driverClassFilter" onchange="applyDriverClassFilter()">
+                <option value="">All Vulnerability Classes</option>
+                ${classes.map(className => `<option value="${escapeHtml(className)}">${escapeHtml(className)}</option>`).join('')}
+            </select>
+            <select class="filter-input" id="driverHvciFilter" onchange="applyDriverClassFilter()">
+                <option value="">Any HVCI Status</option>
+                <option value="loadable">HVCI Loadable</option>
+                <option value="not_loadable">Not HVCI Loadable</option>
+                <option value="unknown">HVCI Unknown</option>
+            </select>
+            <select class="filter-input" id="driverBlocklistFilter" onchange="applyDriverClassFilter()">
+                <option value="">Any Blocklist Status</option>
+                <option value="not_blocked">Not Blocked</option>
+                <option value="blocked">Blocked</option>
+                <option value="possible">Possible Match</option>
+                <option value="unknown">Unknown / Unavailable</option>
+            </select>
+            <span id="driverFilterCount" style="font-weight: 600; color: #666;"></span>
+        </div>
+    `;
+    container.html(html);
+    $('#driverKeywordFilter').val(selectedKeyword);
+    $('#driverClassFilter').val(classes.includes(selected) ? selected : '');
+    $('#driverHvciFilter').val(selectedHvci);
+    $('#driverBlocklistFilter').val(selectedBlocklist);
+    applyDriverClassFilter(false);
+}
+
+function applyDriverClassFilter(allowSelectionChange = true) {
+    const keyword = safeLower($('#driverKeywordFilter').val());
+    const selectedClass = $('#driverClassFilter').val() || '';
+    const hvciFilter = $('#driverHvciFilter').val() || '';
+    const blocklistFilter = $('#driverBlocklistFilter').val() || '';
+    let visibleCount = 0;
+
+    $('.tab').each(function() {
+        const reportName = $(this).data('reportName');
+        const summary = reportSummaries[reportName] || {};
+        const classes = summary.vulnerability_classes || [];
+        const metadata = summary.driver_metadata || {};
+        const shouldShow =
+            (!keyword || buildDriverSearchText(reportName, summary).includes(keyword)) &&
+            (!selectedClass || classes.includes(selectedClass)) &&
+            matchesHvciFilter(metadata, hvciFilter) &&
+            matchesBlocklistFilter(metadata, blocklistFilter);
+        $(this).toggle(shouldShow);
+        if (shouldShow) {
+            visibleCount += 1;
+        }
+    });
+
+    $('#driverFilterCount').text(`${visibleCount} driver${visibleCount === 1 ? '' : 's'}`);
+
+    if (!allowSelectionChange) {
+        return;
+    }
+
+    if (!currentReport || findReportTab(currentReport).is(':hidden')) {
+        const nextTab = $('.tab:visible').first();
+        if (nextTab.length > 0) {
+            selectReport(nextTab.data('reportName'));
+        } else {
+            currentReport = null;
+            $('#statsContainer').addClass('hidden').empty();
+            $('#filterSection').addClass('hidden').empty();
+            $('#vulnerabilitiesContainer').addClass('hidden').empty();
+        }
+    }
+}
+
+function buildReportSummary(reportName, data) {
+    const vulnerabilities = data.vulnerabilities || [];
+    return {
+        report_name: reportName,
+        driver_name: data.driver_name,
+        total_vulnerabilities: vulnerabilities.length,
+        vulnerability_types: [...new Set(vulnerabilities.map(v => v.vulnerability_type || 'Unknown'))].sort(),
+        vulnerability_classes: [...new Set(vulnerabilities.map(v => v.vulnerability_class || 'Other'))].sort(),
+        driver_metadata: data.driver_metadata || {}
+    };
+}
+
+function updateReportSummaryFromStats(reportName, stats) {
+    const existing = reportSummaries[reportName] || {};
+    reportSummaries[reportName] = {
+        ...existing,
+        report_name: reportName,
+        driver_name: stats.driver_name,
+        total_vulnerabilities: stats.total_vulnerabilities,
+        vulnerability_classes: Object.keys(stats.vuln_classes_breakdown || {}).sort(),
+        vulnerability_types: Object.keys(stats.vuln_types_breakdown || {}).sort(),
+        driver_metadata: stats.driver_metadata || existing.driver_metadata || {}
+    };
+    renderDriverClassFilter();
+}
+
+function buildDriverSearchText(reportName, summary) {
+    const metadata = summary.driver_metadata || {};
+    const signature = metadata.signature || {};
+    const blocklist = metadata.microsoft_blocklist || {};
+    const hvci = metadata.hvci || {};
+    const imports = metadata.imports || {};
+    const hashes = metadata.hashes || {};
+    const chunks = [
+        reportName,
+        summary.driver_name,
+        metadata.driver_file,
+        metadata.driver_path,
+        signature.signature_type,
+        signature.status,
+        signature.subject,
+        signature.issuer,
+        blocklist.status,
+        hvci.status,
+        ...(summary.vulnerability_classes || []),
+        ...(summary.vulnerability_types || []),
+        ...Object.values(hashes || {}),
+        ...(imports.libraries || []),
+        ...(imports.flat || [])
+    ];
+    return safeLower(chunks.filter(Boolean).join(' '));
+}
+
+function matchesHvciFilter(metadata, filterValue) {
+    if (!filterValue) return true;
+    const value = (metadata.hvci || {}).loadable_with_hvci;
+    if (filterValue === 'loadable') return value === true;
+    if (filterValue === 'not_loadable') return value === false;
+    if (filterValue === 'unknown') return value !== true && value !== false;
+    return true;
+}
+
+function matchesBlocklistFilter(metadata, filterValue) {
+    if (!filterValue) return true;
+    const blocklist = metadata.microsoft_blocklist || {};
+    const value = blocklist.is_blocklisted;
+    const hasMatches = (blocklist.matches || []).length > 0;
+    if (filterValue === 'not_blocked') return value === false;
+    if (filterValue === 'blocked') return value === true;
+    if (filterValue === 'possible') return value !== true && value !== false && hasMatches;
+    if (filterValue === 'unknown') return value !== true && value !== false && !hasMatches;
+    return true;
+}
+
+function renderBreakdown(values) {
+    const entries = Object.entries(values || {});
+    if (entries.length === 0) {
+        return '<div class="breakdown-item"><span>None</span><span style="font-weight: bold;">0</span></div>';
+    }
+    return entries.map(([type, count]) =>
+        `<div class="breakdown-item"><span>${escapeHtml(type || 'Unknown')}</span><span style="font-weight: bold;">${escapeHtml(count)}</span></div>`
+    ).join('');
+}
+
+function renderMetadataDetails(metadata) {
+    const signature = metadata.signature || {};
+    const blocklist = metadata.microsoft_blocklist || {};
+    const hvci = metadata.hvci || {};
+    const lines = [];
+
+    if (signature.status) lines.push(`Signature status: ${signature.status}`);
+    if (signature.subject) lines.push(`Subject: ${signature.subject}`);
+    if (signature.issuer) lines.push(`Issuer: ${signature.issuer}`);
+    if (metadata.hashes && metadata.hashes.sha256) lines.push(`SHA256: ${metadata.hashes.sha256}`);
+    if (blocklist.policies_checked && blocklist.policies_checked.length) lines.push(`Policies checked: ${blocklist.policies_checked.join(', ')}`);
+    (blocklist.matches || []).slice(0, 8).forEach(match => {
+        lines.push(`Blocklist match: ${match.policy} ${match.friendly_name || ''} (${match.match_type || 'unknown'})`);
+        if (match.matched_hash) lines.push(`Matched hash: ${match.matched_hash} (${match.matched_hash_source || 'unknown source'})`);
+        if (match.hash) lines.push(`Policy Hash attribute: ${match.hash} (${match.hash_kind || 'policy hash'})`);
+    });
+    if (blocklist.runtime_resolution && blocklist.runtime_resolution.status) lines.push(`Blocklist resolver: ${blocklist.runtime_resolution.status}`);
+    if (blocklist.runtime_resolution && blocklist.runtime_resolution.source) lines.push(`Blocklist source: ${blocklist.runtime_resolution.source}`);
+    if (blocklist.runtime_resolution && blocklist.runtime_resolution.error) lines.push(`Blocklist resolver error: ${blocklist.runtime_resolution.error}`);
+    if (blocklist.note) lines.push(`Blocklist note: ${blocklist.note}`);
+    (hvci.issues || []).forEach(issue => lines.push(`HVCI issue: ${issue}`));
+    (hvci.warnings || []).forEach(warning => lines.push(`HVCI warning: ${warning}`));
+    if (hvci.runtime_verification) lines.push(`Runtime verification: ${hvci.runtime_verification}`);
+
+    if (lines.length === 0) {
+        return '';
+    }
+
+    return `
+        <div style="margin-top: 10px;">
+            <details>
+                <summary style="font-weight: 600; color: #666; cursor: pointer;">Details</summary>
+                <pre style="margin-top: 10px; white-space: pre-wrap; word-break: break-word; font-size: 0.85em;">${escapeHtml(lines.join('\n'))}</pre>
+            </details>
+        </div>
+    `;
+}
+
+function renderImportsDetails(imports) {
+    if (!imports || imports.available === false) {
+        const reason = imports && imports.error ? imports.error : 'No import metadata available';
+        return `
+            <div style="margin-top: 10px;">
+                <details>
+                    <summary style="font-weight: 600; color: #666; cursor: pointer;">Imports</summary>
+                    <pre style="margin-top: 10px; white-space: pre-wrap; word-break: break-word; font-size: 0.85em;">${escapeHtml(reason)}</pre>
+                </details>
+            </div>
+        `;
+    }
+
+    const lines = [];
+    (imports.by_library || []).forEach(group => {
+        lines.push(`${group.library} (${group.count})`);
+        (group.functions || []).forEach(name => lines.push(`  ${name}`));
+    });
+
+    return `
+        <div style="margin-top: 10px;">
+            <details>
+                <summary style="font-weight: 600; color: #666; cursor: pointer;">Imports (${escapeHtml(imports.total_imports || 0)})</summary>
+                <pre style="margin-top: 10px; white-space: pre-wrap; word-break: break-word; font-size: 0.85em;">${escapeHtml(lines.join('\n') || 'No imports found')}</pre>
+            </details>
+        </div>
+    `;
+}
+
+function formatImportCount(imports) {
+    if (!imports || imports.available === false) {
+        return 'Unavailable';
+    }
+    return `${imports.total_imports || 0} in ${imports.library_count || 0} libraries`;
+}
+
 function showAlert(message, type) {
     const alertClass = type === 'error' ? 'alert-error' : type === 'success' ? 'alert-success' : 'alert-info';
-    const alertHtml = `<div class="alert ${alertClass}">${message}</div>`;
-    $('#alertContainer').html(alertHtml);
+    $('#alertContainer').html(`<div class="alert ${alertClass}">${escapeHtml(message)}</div>`);
 
-    // Auto-hide success and info alerts after 5 seconds
     if (type === 'success' || type === 'info') {
         setTimeout(() => {
             $('#alertContainer').empty();
         }, 5000);
     }
+}
+
+function safeLower(value) {
+    return String(value || '').toLowerCase();
+}
+
+function formatDate(value) {
+    if (!value) {
+        return 'Unknown';
+    }
+    const date = new Date(value);
+    return Number.isNaN(date.getTime()) ? String(value) : date.toLocaleString();
+}
+
+function formatTriState(value) {
+    if (value === true) return 'Yes';
+    if (value === false) return 'No';
+    return 'Unknown';
+}
+
+function getErrorMessage(xhr) {
+    return (xhr.responseJSON && xhr.responseJSON.error) || xhr.statusText || 'Unknown error';
+}
+
+function escapeHtml(value) {
+    return String(value ?? '').replace(/[&<>"']/g, function(char) {
+        return {
+            '&': '&amp;',
+            '<': '&lt;',
+            '>': '&gt;',
+            '"': '&quot;',
+            "'": '&#39;'
+        }[char];
+    });
 }
 </script>
 {% endblock %}
