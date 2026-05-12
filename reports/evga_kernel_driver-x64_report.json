@@ -1,0 +1,89 @@
+{
+  "driver_name": "evga_kernel_driver-x64",
+  "generated_at": "2026-05-12T03:36:35.601180",
+  "total_vulnerabilities": 7,
+  "vulnerabilities": [
+    {
+      "timestamp": "2026-05-12T03:36:28.130881",
+      "vulnerability_type": "WRMSR registers are tainted",
+      "access_type": "",
+      "ioctl": "0x80006410",
+      "rip": "0x140001c77",
+      "additional_info": {},
+      "address_info": {}
+    },
+    {
+      "timestamp": "2026-05-12T03:36:30.005060",
+      "vulnerability_type": "arbitrary in vuln",
+      "access_type": "",
+      "ioctl": "0x80006404",
+      "rip": "0x140001de0",
+      "additional_info": {
+        "I/O Port": "<BV32 0x0 .. *<BV64 SystemBuffer_67_64>_145_4096[15:0]>"
+      },
+      "address_info": {}
+    },
+    {
+      "timestamp": "2026-05-12T03:36:31.362463",
+      "vulnerability_type": "RDMSR registers are tainted",
+      "access_type": "",
+      "ioctl": "0x8000640c",
+      "rip": "0x140001cf7",
+      "additional_info": {},
+      "address_info": {}
+    },
+    {
+      "timestamp": "2026-05-12T03:36:31.374380",
+      "vulnerability_type": "arbitrary rdmsr",
+      "access_type": "",
+      "ioctl": "0x8000640c",
+      "rip": "0x140001cf7",
+      "additional_info": {
+        "Register": "<BV32 *<BV64 SystemBuffer_67_64>_185_4096[31:0]>"
+      },
+      "address_info": {}
+    },
+    {
+      "timestamp": "2026-05-12T03:36:31.896567",
+      "vulnerability_type": "arbitrary out vuln",
+      "access_type": "",
+      "ioctl": "0x80006408",
+      "rip": "0x140001e3b",
+      "additional_info": {
+        "I/O Port": "<BV32 0x0 .. *<BV64 SystemBuffer_67_64>_196_4096[15:0]>",
+        "Value": "<BV32 0x0 .. *<BV64 SystemBuffer_67_64>_196_4096[47:32]>"
+      },
+      "address_info": {}
+    },
+    {
+      "timestamp": "2026-05-12T03:36:34.541279",
+      "vulnerability_type": "map physical memory",
+      "access_type": "MmMapIoSpace - PhysicalAddress and NumberOfBytes controllable",
+      "ioctl": "0x80006414",
+      "rip": "0x140100060",
+      "additional_info": {
+        "PhysicalAddress": "<BV64 *<BV64 SystemBuffer_67_64>_269_4096[63:0]>",
+        "NumberOfBytes": "<BV64 0x0 .. OutputBufferLength_62_32[7:0]>",
+        "CacheType": "<BV64 0x0>"
+      },
+      "address_info": {
+        "return address": "0x140001f23"
+      }
+    },
+    {
+      "timestamp": "2026-05-12T03:36:35.601144",
+      "vulnerability_type": "map physical memory",
+      "access_type": "MmMapIoSpace - PhysicalAddress and NumberOfBytes controllable",
+      "ioctl": "0x80006418",
+      "rip": "0x140100060",
+      "additional_info": {
+        "PhysicalAddress": "<BV64 *<BV64 SystemBuffer_67_64>_297_4096[63:0]>",
+        "NumberOfBytes": "<BV64 0x0 .. 248 + InputBufferLength_63_32[7:0]>",
+        "CacheType": "<BV64 0x0>"
+      },
+      "address_info": {
+        "return address": "0x140002014"
+      }
+    }
+  ]
+}

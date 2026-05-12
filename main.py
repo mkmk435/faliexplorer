@@ -71,8 +71,8 @@ def find_vulns(driver_path, ioctl_handler_addr, ioctl_handler_state, specific_io
     ("MajorFunction", 8), ("MinorFunction", 8), ('OutputBufferLength', 32), ('InputBufferLength', 32),
     ('IoControlCode', 32)])
 
-    # ioctl_handler_state.globals['open_section_handles'] = ()
-
+    ioctl_handler_state.globals['open_section_handles'] = ()
+    ioctl_handler_state.globals['open_file_handles'] = ()
     ioctl_handler_state.globals['tainted_ProbeForRead'] = ()
     ioctl_handler_state.globals['tainted_ProbeForWrite'] = ()
     ioctl_handler_state.globals['tainted_MmIsAddressValid'] = ()
@@ -80,6 +80,8 @@ def find_vulns(driver_path, ioctl_handler_addr, ioctl_handler_state, specific_io
     ioctl_handler_state.globals['tainted_handles'] = ()
     ioctl_handler_state.globals['tainted_objects'] = ()
     ioctl_handler_state.globals['tainted_process_context_changing'] = ()
+    ioctl_handler_state.globals['allocated_mdls'] = ()
+
 
     ioctl_handler_state.globals['active_buffers'] = []
     ioctl_handler_state.globals['freed_buffers'] = []
@@ -320,6 +322,10 @@ def hookDriver(driver_path):
     globals.proj.hook_symbol("ExFreePool2", apiHooks.HookExFreePool2(cc=globals.cc))
     globals.proj.hook_symbol("ExFreePool", apiHooks.HookExFreePool(cc=globals.cc))
 
+    globals.proj.hook_symbol('IoAllocateMdl', apiHooks.HookIoAllocateMdl(cc=globals.cc))
+    globals.proj.hook_symbol('MmProbeAndLockPages', apiHooks.HookMmProbeAndLockPages(cc=globals.cc))
+    globals.proj.hook_symbol('MmMapLockedPages', apiHooks.HookMmMapLockedPages(cc=globals.cc))
+    globals.proj.hook_symbol('MmMapLockedPagesSpecifyCache', apiHooks.HookMmMapLockedPagesSpecifyCache(cc=globals.cc))
 
     globals.proj.hook_symbol('IoIs32bitProcess', apiHooks.HookIoIs32bitProcess(cc=globals.cc))
     globals.proj.hook_symbol('Vsnprintf', apiHooks.HookVsnprintf(cc=globals.cc))

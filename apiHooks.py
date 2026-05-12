@@ -129,7 +129,7 @@ class HookWdfIoQueueCreate(angr.SimProcedure):
         self.state.globals['wdf_queue_handle'] = queue_handle
         return 0
 
-
+# 
 def _store_optional_pointer(state, dst, value, size=None):
     if value is None:
         return
@@ -154,6 +154,114 @@ def _store_optional_pointer(state, dst, value, size=None):
         disable_actions=True,
         inspect=False
     )
+
+
+# Semplice helper per scrivere 0 in IoStatusBlock 
+def _write_success_io_status_block(state, IoStatusBlock, information=0):
+    if state.solver.is_true(IoStatusBlock == 0):
+        return
+
+    if isinstance(information, int):
+        information = claripy.BVV(information, state.arch.bits)
+    elif information.size() < state.arch.bits:
+        information = claripy.ZeroExt(state.arch.bits - information.size(), information)
+
+    try:
+        isb = state.mem[IoStatusBlock].struct._IO_STATUS_BLOCK
+        isb.u.Status = 0
+        isb.Information = information
+    except Exception:
+        return
+
+
+def _analyze_object_attributes(func_name, state, ObjectAttributes):
+    try:
+        utils.analyze_ObjectAttributes(func_name, state, ObjectAttributes)
+    except Exception:
+        return
+
+
+def _read_object_attributes_info(state, ObjectAttributes):
+    info = {
+        'object_name': None,
+        'object_name_ptr': None,
+        'object_name_buffer': None,
+        'attributes': None,
+        'controlled': False,
+    }
+
+    if state.solver.is_true(ObjectAttributes == 0):
+        return info
+
+    try:
+        object_name_ptr = state.mem[ObjectAttributes].struct._OBJECT_ATTRIBUTES.ObjectName.resolved
+        attributes = state.mem[ObjectAttributes].struct._OBJECT_ATTRIBUTES.Attributes.resolved
+        buffer = state.mem[object_name_ptr].struct._UNICODE_STRING.Buffer.resolved
+    except Exception:
+        return info
+
+    info['object_name_ptr'] = object_name_ptr
+    info['object_name_buffer'] = buffer
+    info['attributes'] = attributes
+
+    try:
+        info['object_name'] = state.mem[object_name_ptr].struct._UNICODE_STRING.Buffer.deref.wstring.concrete
+    except Exception:
+        info['object_name'] = str(buffer)
+
+    tmp_state = state.copy()
+    try:
+        tmp_state.solver.add(attributes & 1024 == 0)
+        force_access_check_missing = tmp_state.satisfiable()
+    except Exception:
+        force_access_check_missing = False
+
+    tainted_unicode_strings = state.globals.get('tainted_unicode_strings', ())
+    try:
+        controlled_buffer = utils.tainted_buffer(state.memory.load(buffer, 0x80, disable_actions=True, inspect=False))
+    except Exception:
+        controlled_buffer = ''
+
+    info['controlled'] = (
+        force_access_check_missing and
+        (str(buffer) in tainted_unicode_strings or bool(controlled_buffer))
+    )
+    return info
+
+
+# semplice helper per aggiungere info agli handle aperti
+def _track_file_handle(state, handle, object_info, DesiredAccess=None, CreateDisposition=None, CreateOptions=None):
+    state.globals['open_file_handles'] += ((
+        handle,
+        object_info.get('object_name'),
+        DesiredAccess,
+        CreateDisposition,
+        CreateOptions,
+        object_info.get('controlled', False),
+    ),)
+
+
+# semplice check per vedere se un file handle e' controllabile
+def _lookup_file_handle(state, FileHandle):
+    for handle_info in state.globals.get('open_file_handles', ()):
+        handle = handle_info[0]
+        if str(handle) == str(FileHandle):
+            return handle_info
+    return None
+
+
+# helper per controllare se DesiredAccess di un file handle contiene permessi di scrittura,
+def _file_access_may_write(state, DesiredAccess):
+    if DesiredAccess is None:
+        return True
+
+    file_write_mask = 0x10000000 | 0x40000000 | 0x2 | 0x4
+    try:
+        tmp_state = state.copy()
+        tmp_state.solver.add((DesiredAccess & file_write_mask) != 0)
+        return tmp_state.satisfiable()
+    except Exception:
+        return True
 
 
 class HookWdfRequestRetrieveInputBuffer(angr.SimProcedure):
@@ -779,31 +887,112 @@ class HookZwDeleteFile(angr.SimProcedure):
     def run(self, ObjectAttributes):
         if globals.phase == 2:
             # Check if we can control the parameters of ZwDeleteFile.
-            utils.analyze_ObjectAttributes('ZwDeleteFile', self.state, ObjectAttributes)
+            _analyze_object_attributes('ZwDeleteFile', self.state, ObjectAttributes)
+            object_info = _read_object_attributes_info(self.state, ObjectAttributes)
+
+            if object_info['controlled']:
+                utils.print_vuln(
+                    'arbitrary file delete',
+                    'ZwDeleteFile - ObjectName controllable',
+                    self.state,
+                    {
+                        'ObjectAttributes': str(ObjectAttributes),
+                        'ObjectName': str(object_info['object_name']),
+                        'ObjectName.Buffer': str(object_info['object_name_buffer']),
+                        'Attributes': str(object_info['attributes']),
+                    },
+                    {'return address': hex(self.state.callstack.ret_addr)}
+                )
 
         return 0
 
-# COnsidera che il FileHandle in tutti queste funzioni
-# E' popolato, non e' un parametro di input vero
+
+# simbolizza handle 
 class HookZwOpenFile(angr.SimProcedure):
     def run(self, FileHandle, DesiredAccess, ObjectAttributes, IoStatusBlock, ShareAccess, OpenOptions):
         if globals.phase == 2:
+            _analyze_object_attributes('ZwOpenFile', self.state, ObjectAttributes)
+            object_info = _read_object_attributes_info(self.state, ObjectAttributes)
+
             # Check if we can control the parameters of ZwOpenFile.
-            utils.analyze_ObjectAttributes('ZwOpenFile', self.state, ObjectAttributes)
+            ret_addr = hex(self.state.callstack.ret_addr)
+            handle = claripy.BVS(f'ZwOpenFile_{ret_addr}', self.state.arch.bits)
+            self.state.memory.store(FileHandle, handle, self.state.arch.bytes, endness=self.state.arch.memory_endness, disable_actions=True, inspect=False)
+            _write_success_io_status_block(self.state, IoStatusBlock)
+
+            # aggiungi info handle alla lista state.globals['open_file_handles']
+            _track_file_handle(self.state, handle, object_info, DesiredAccess=DesiredAccess, CreateOptions=OpenOptions)
 
         return 0
 
+# Stesso di ZwOpenFile 
 class HookZwCreateFile(angr.SimProcedure):
     def run(self, FileHandle, DesiredAccess, ObjectAttributes, IoStatusBlock, AllocationSize, FileAttributes, ShareAccess, CreateDisposition, CreateOptions, EaBuffer, EaLength):
         if globals.phase == 2:
             # Check if we can control the parameters of ZwCreateFile.
-            utils.analyze_ObjectAttributes('ZwCreateFile', self.state, ObjectAttributes)
+            _analyze_object_attributes('ZwCreateFile', self.state, ObjectAttributes)
+            object_info = _read_object_attributes_info(self.state, ObjectAttributes)
+
+            # Check if we can control the parameters of ZwOpenFile.
+            ret_addr = hex(self.state.callstack.ret_addr)
+            handle = claripy.BVS(f'ZwCreateFile_{ret_addr}', self.state.arch.bits)
+            self.state.memory.store(FileHandle, handle, self.state.arch.bytes, endness=self.state.arch.memory_endness, disable_actions=True, inspect=False)
+            _write_success_io_status_block(self.state, IoStatusBlock)
+            _track_file_handle(self.state, handle, object_info, DesiredAccess=DesiredAccess, CreateDisposition=CreateDisposition, CreateOptions=CreateOptions)
 
         return 0
     
 # Check if we can control the parameters of ZwWriteFile
 class HookZwWriteFile(angr.SimProcedure):
     def run(self, FileHandle, Event, ApcRoutine, ApcContext, IoStatusBlock, Buffer, Length, ByteOffset, Key):
+        if globals.phase == 2:
+            # Check se l'handle e' stato simbolizzato da ZwOpenFile o ZwCreateFile, se si controllabile e se ha i permessi di scrittura
+            handle_info = _lookup_file_handle(self.state, FileHandle)
+            tracked_controlled_file = (
+                handle_info is not None and
+                handle_info[5] and
+                _file_access_may_write(self.state, handle_info[2])
+            )
+            unknown_symbolic_file = handle_info is None and FileHandle.symbolic
+
+            if tracked_controlled_file or unknown_symbolic_file:
+                access_type = 'ZwWriteFile - write to controllable file handle' if tracked_controlled_file else 'ZwWriteFile - write to unknown symbolic file handle'
+                additional_info = {
+                    'FileHandle': str(FileHandle),
+                    'Buffer': str(Buffer),
+                    'Length': str(Length),
+                    'ByteOffset': str(ByteOffset),
+                }
+
+                if handle_info is not None:
+                    additional_info['ObjectName'] = str(handle_info[1])
+                    additional_info['DesiredAccess'] = str(handle_info[2])
+                    additional_info['CreateDisposition'] = str(handle_info[3])
+                    additional_info['CreateOptions'] = str(handle_info[4])
+
+                utils.print_vuln(
+                    'arbitrary file write',
+                    access_type,
+                    self.state,
+                    additional_info,
+                    {'return address': hex(self.state.callstack.ret_addr)}
+                )
+
+            if utils.tainted_buffer(Buffer) or utils.tainted_buffer(Length) or utils.tainted_buffer(ByteOffset):
+                utils.print_vuln(
+                    'controlled file write parameters',
+                    'ZwWriteFile - Buffer, Length, or ByteOffset controllable',
+                    self.state,
+                    {
+                        'FileHandle': str(FileHandle),
+                        'Buffer': str(Buffer),
+                        'Length': str(Length),
+                        'ByteOffset': str(ByteOffset),
+                    },
+                    {'return address': hex(self.state.callstack.ret_addr)}
+                )
+
+        _write_success_io_status_block(self.state, IoStatusBlock, Length)
         return 0
 
 
@@ -1145,3 +1334,150 @@ class HookRtlQueryRegistryValues(angr.SimProcedure):
         end_of_table_addr = QueryTable +  indexWhile * (self.state.mem.RTL_QUERY_REGISTRY_TABLE._type.size // 8)
         HookRtlQueryRegistryValues.search_for_termdd_like_vuln(self.state, directTableEntries, QueryTable, end_of_table_addr)
         return 0
+
+
+# Helper che data un MDL cerca se e' stato allocato da IoAllocateMdl, e se si ritorna le info relative a quell'MDL (indirizzo virtuale e dimensione)
+def _allocated_mdl_info(state, MemoryDescriptorList):
+    for mdl_info in state.globals.get('allocated_mdls', ()):
+        try:
+            match = MemoryDescriptorList == mdl_info['Address']
+            if isinstance(match, bool):
+                is_match = match
+            else:
+                is_match = state.solver.is_true(match)
+        except Exception:
+            is_match = False
+
+        if is_match:
+            return mdl_info
+    return None
+
+
+# PMDL IoAllocateMdl(
+#   [in, optional]      __drv_aliasesMem PVOID VirtualAddress,
+#   [in]                ULONG                  Length,
+#   [in]                BOOLEAN                SecondaryBuffer,
+#   [in]                BOOLEAN                ChargeQuota,
+#   [in, out, optional] PIRP                   Irp
+# );
+class HookIoAllocateMdl(angr.SimProcedure):
+    def run(self, VirtualAddress, Length, SecondaryBuffer, ChargeQuota, Irp):
+        if utils.tainted_buffer(VirtualAddress):
+            if utils.tainted_buffer(Length):
+                utils.print_vuln(
+                    'MDL Arbitrary virtual address mapping',
+                    'IoAllocateMdl - VirtualAddress and Length controllable',
+                    self.state,
+                    {
+                        'VirtualAddress': str(VirtualAddress),
+                        'Length': str(Length),
+                    },
+                    {'return address': hex(self.state.callstack.ret_addr)}
+                )
+            else:
+                utils.print_vuln(
+                    'MDL Arbitrary virtual address mapping',
+                    'IoAllocateMdl - VirtualAddress controllable',
+                    self.state,
+                    {
+                        'VirtualAddress': str(VirtualAddress),
+                        'Length': str(Length),
+                    },
+                    {'return address': hex(self.state.callstack.ret_addr)}
+                )
+            pmdl_addr = utils.next_base_addr()
+            pmdl = claripy.BVS(f'IoAllocateMdl_pmdl_{hex(self.state.callstack.ret_addr)}', self.state.arch.bits)
+            self.state.memory.store(pmdl_addr, pmdl, self.state.arch.bytes, endness=self.state.arch.memory_endness, disable_actions=True, inspect=False)
+            self.state.globals['allocated_mdls'] += ({
+                'Address': pmdl_addr,
+                'Descriptor': pmdl,
+                'VirtualAddress': VirtualAddress,
+                'Length': Length,
+            },)
+            return pmdl_addr 
+        return utils.next_base_addr()
+
+
+
+class HookMmMapLockedPages(angr.SimProcedure):
+    def run(self, MemoryDescriptorList, AccessMode):
+        mdl_info = _allocated_mdl_info(self.state, MemoryDescriptorList)
+        if MemoryDescriptorList.symbolic or mdl_info:
+            # Check se controllo accessmode o se e' uguale a 0 (KernelMode)
+            if utils.tainted_buffer(AccessMode) or self.state.solver.is_true(AccessMode == 0):
+                vuln_parameters = {
+                    'MemoryDescriptorList': str(MemoryDescriptorList),
+                    'AccessMode': str(AccessMode),
+                }
+                if mdl_info:
+                    vuln_parameters['MdlVirtualAddress'] = str(mdl_info['VirtualAddress'])
+                    vuln_parameters['MdlLength'] = str(mdl_info['Length'])
+
+                utils.print_vuln(
+                    'MDL Arbitrary virtual address mapping',
+                    'MmMapLockedPages - MemoryDescriptorList controllable',
+                    self.state,
+                    vuln_parameters,
+                    {'return address': hex(self.state.callstack.ret_addr)}
+                )
+        return utils.next_base_addr()
+
+# VOID MmProbeAndLockPages(
+#   [in, out] PMDL            MemoryDescriptorList,
+#   [in]      KPROCESSOR_MODE AccessMode,
+#   [in]      LOCK_OPERATION  Operation
+# );
+class HookMmProbeAndLockPages(angr.SimProcedure):
+    def run(self, MemoryDescriptorList, AccessMode, Operation):
+        mdl_info = _allocated_mdl_info(self.state, MemoryDescriptorList)
+        if MemoryDescriptorList.symbolic or mdl_info:
+            # Check se controllo accessmode o se e' uguale a 0 (KernelMode)
+            if utils.tainted_buffer(AccessMode) or self.state.solver.is_true(AccessMode == 0):
+                vuln_parameters = {
+                    'MemoryDescriptorList': str(MemoryDescriptorList),
+                    'AccessMode': str(AccessMode),
+                    'Operation': str(Operation),
+                }
+                if mdl_info:
+                    vuln_parameters['MdlVirtualAddress'] = str(mdl_info['VirtualAddress'])
+                    vuln_parameters['MdlLength'] = str(mdl_info['Length'])
+
+                utils.print_vuln(
+                    'MDL Arbitrary virtual address mapping',
+                    'MmProbeAndLockPages - MemoryDescriptorList controllable',
+                    self.state,
+                    vuln_parameters,
+                    {'return address': hex(self.state.callstack.ret_addr)}
+                )
+
+# PVOID MmMapLockedPagesSpecifyCache(
+#   [in]           PMDL                                                                          MemoryDescriptorList,
+#   [in]           __drv_strictType(KPROCESSOR_MODE / enum _MODE,__drv_typeConst)KPROCESSOR_MODE AccessMode,
+#   [in]           __drv_strictTypeMatch(__drv_typeCond)MEMORY_CACHING_TYPE                      CacheType,
+#   [in, optional] PVOID                                                                         RequestedAddress,
+#   [in]           ULONG                                                                         BugCheckOnFailure,
+#   [in]           ULONG                                                                         Priority
+# );
+class HookMmMapLockedPagesSpecifyCache(angr.SimProcedure):
+    def run(self, MemoryDescriptorList, AccessMode, CacheType, BaseAddress, BugCheckOnFailure, Priority):
+        mdl_info = _allocated_mdl_info(self.state, MemoryDescriptorList)
+        if MemoryDescriptorList.symbolic or mdl_info:
+            # Check se controllo accessmode o se e' uguale a 0 (KernelMode)
+            if utils.tainted_buffer(AccessMode) or self.state.solver.is_true(AccessMode == 0):
+                vuln_parameters = {
+                    'MemoryDescriptorList': str(MemoryDescriptorList),
+                    'AccessMode': str(AccessMode),
+                    'CacheType': str(CacheType),
+                }
+                if mdl_info:
+                    vuln_parameters['MdlVirtualAddress'] = str(mdl_info['VirtualAddress'])
+                    vuln_parameters['MdlLength'] = str(mdl_info['Length'])
+
+                utils.print_vuln(
+                    'MDL Arbitrary virtual address mapping',
+                    'MmMapLockedPagesSpecifyCache - MemoryDescriptorList controllable',
+                    self.state,
+                    vuln_parameters,
+                    {'return address': hex(self.state.callstack.ret_addr)}
+                )
+        return utils.next_base_addr()

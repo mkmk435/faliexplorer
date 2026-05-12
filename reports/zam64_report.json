@@ -1,0 +1,29 @@
+{
+  "driver_name": "zam64",
+  "generated_at": "2026-05-11T08:59:39.561528",
+  "total_vulnerabilities": 2,
+  "vulnerabilities": [
+    {
+      "timestamp": "2026-05-11T08:59:38.800070",
+      "vulnerability_type": "null pointer dereference - input buffer",
+      "access_type": "write input buffer",
+      "ioctl": "0x80002054",
+      "rip": "0x1400109ae",
+      "additional_info": {},
+      "address_info": {
+        "write to": "<BV64 SystemBuffer_302_64>"
+      }
+    },
+    {
+      "timestamp": "2026-05-11T08:59:39.561485",
+      "vulnerability_type": "null pointer dereference - input buffer",
+      "access_type": "read input buffer",
+      "ioctl": "0x80002058",
+      "rip": "0x14000f61a",
+      "additional_info": {},
+      "address_info": {
+        "read from": "<BV64 SystemBuffer_302_64 + 0x4>"
+      }
+    }
+  ]
+}

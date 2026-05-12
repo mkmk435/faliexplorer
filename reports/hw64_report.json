@@ -1,0 +1,353 @@
+{
+  "driver_name": "hw64",
+  "generated_at": "2026-05-12T07:19:56.853104",
+  "total_vulnerabilities": 25,
+  "vulnerabilities": [
+    {
+      "timestamp": "2026-05-12T07:17:46.971050",
+      "vulnerability_type": "null pointer dereference - input buffer",
+      "access_type": "read input buffer",
+      "ioctl": "0x0",
+      "rip": "0x180005534",
+      "additional_info": {},
+      "address_info": {
+        "read from": "<BV64 SystemBuffer_237_64>"
+      }
+    },
+    {
+      "timestamp": "2026-05-12T07:17:50.371636",
+      "vulnerability_type": "map physical memory",
+      "access_type": "MmMapIoSpace - PhysicalAddress controllable",
+      "ioctl": "0x9c406488",
+      "rip": "0x1801000e8",
+      "additional_info": {
+        "PhysicalAddress": "<BV64 *<BV64 SystemBuffer_237_64>_744_4096[63:0]>",
+        "NumberOfBytes": "<BV64 0x4>",
+        "CacheType": "<BV64 0x0>"
+      },
+      "address_info": {
+        "return address": "0x180003f79"
+      }
+    },
+    {
+      "timestamp": "2026-05-12T07:17:50.485807",
+      "vulnerability_type": "arbitrary in vuln",
+      "access_type": "",
+      "ioctl": "0x9c406400",
+      "rip": "0x18000836e",
+      "additional_info": {
+        "I/O Port": "<BV32 0x0 .. *<BV64 SystemBuffer_237_64>_744_4096[15:0]>"
+      },
+      "address_info": {}
+    },
+    {
+      "timestamp": "2026-05-12T07:17:50.762295",
+      "vulnerability_type": "map physical memory",
+      "access_type": "MmMapIoSpace - PhysicalAddress and NumberOfBytes controllable",
+      "ioctl": "0x9c4064b4",
+      "rip": "0x1801000e8",
+      "additional_info": {
+        "PhysicalAddress": "<BV64 *<BV64 SystemBuffer_237_64>_744_4096[63:0]>",
+        "NumberOfBytes": "<BV64 0x0 .. *<BV64 SystemBuffer_237_64>_744_4096[95:64] .. 0>",
+        "CacheType": "<BV64 0x0>"
+      },
+      "address_info": {
+        "return address": "0x180003f79"
+      }
+    },
+    {
+      "timestamp": "2026-05-12T07:17:51.431116",
+      "vulnerability_type": "arbitrary in vuln",
+      "access_type": "",
+      "ioctl": "0x9c40641c",
+      "rip": "0x1800083ae",
+      "additional_info": {
+        "I/O Port": "<BV32 0x0 .. *<BV64 SystemBuffer_237_64>_744_4096[15:0]>"
+      },
+      "address_info": {}
+    },
+    {
+      "timestamp": "2026-05-12T07:18:31.145191",
+      "vulnerability_type": "map physical memory",
+      "access_type": "MmMapIoSpace - PhysicalAddress controllable",
+      "ioctl": "0x9c406484",
+      "rip": "0x1801000e8",
+      "additional_info": {
+        "PhysicalAddress": "<BV64 *<BV64 SystemBuffer_237_64>_744_4096[63:0]>",
+        "NumberOfBytes": "<BV64 0x2>",
+        "CacheType": "<BV64 0x0>"
+      },
+      "address_info": {
+        "return address": "0x180003f79"
+      }
+    },
+    {
+      "timestamp": "2026-05-12T07:18:31.361220",
+      "vulnerability_type": "map physical memory",
+      "access_type": "MmMapIoSpace - PhysicalAddress and NumberOfBytes controllable",
+      "ioctl": "0x9c406498",
+      "rip": "0x1801000e8",
+      "additional_info": {
+        "PhysicalAddress": "<BV64 *<BV64 SystemBuffer_237_64>_744_4096[63:0]>",
+        "NumberOfBytes": "<BV64 0x0 .. *<BV64 SystemBuffer_237_64>_744_4096[95:64] .. 0>",
+        "CacheType": "<BV64 0x0>"
+      },
+      "address_info": {
+        "return address": "0x180003f79"
+      }
+    },
+    {
+      "timestamp": "2026-05-12T07:18:31.913704",
+      "vulnerability_type": "arbitrary in vuln",
+      "access_type": "",
+      "ioctl": "0x9c406420",
+      "rip": "0x18000838e",
+      "additional_info": {
+        "I/O Port": "<BV32 0x0 .. *<BV64 SystemBuffer_237_64>_744_4096[15:0]>"
+      },
+      "address_info": {}
+    },
+    {
+      "timestamp": "2026-05-12T07:19:11.471538",
+      "vulnerability_type": "arbitrary in vuln",
+      "access_type": "",
+      "ioctl": "0x9c406404",
+      "rip": "0x1800083ae",
+      "additional_info": {
+        "I/O Port": "<BV32 0x0 .. *<BV64 SystemBuffer_237_64>_744_4096[15:0]>"
+      },
+      "address_info": {}
+    },
+    {
+      "timestamp": "2026-05-12T07:19:11.720796",
+      "vulnerability_type": "map physical memory",
+      "access_type": "MmMapIoSpace - PhysicalAddress and NumberOfBytes controllable",
+      "ioctl": "0x9c40648c",
+      "rip": "0x1801000e8",
+      "additional_info": {
+        "PhysicalAddress": "<BV64 *<BV64 SystemBuffer_237_64>_744_4096[63:0]>",
+        "NumberOfBytes": "<BV64 0x0 .. *<BV64 SystemBuffer_237_64>_744_4096[95:64]>",
+        "CacheType": "<BV64 0x0>"
+      },
+      "address_info": {
+        "return address": "0x180003f79"
+      }
+    },
+    {
+      "timestamp": "2026-05-12T07:19:11.919436",
+      "vulnerability_type": "map physical memory",
+      "access_type": "MmMapIoSpace - PhysicalAddress and NumberOfBytes controllable",
+      "ioctl": "0x9c406490",
+      "rip": "0x1801000e8",
+      "additional_info": {
+        "PhysicalAddress": "<BV64 *<BV64 SystemBuffer_237_64>_744_4096[63:0]>",
+        "NumberOfBytes": "<BV64 0x0 .. *<BV64 SystemBuffer_237_64>_744_4096[95:64] .. 0>",
+        "CacheType": "<BV64 0x0>"
+      },
+      "address_info": {
+        "return address": "0x180003f79"
+      }
+    },
+    {
+      "timestamp": "2026-05-12T07:19:12.135524",
+      "vulnerability_type": "map physical memory",
+      "access_type": "MmMapIoSpace - PhysicalAddress and NumberOfBytes controllable",
+      "ioctl": "0x9c4064ac",
+      "rip": "0x1801000e8",
+      "additional_info": {
+        "PhysicalAddress": "<BV64 *<BV64 SystemBuffer_237_64>_744_4096[63:0]>",
+        "NumberOfBytes": "<BV64 0x0 .. *<BV64 SystemBuffer_237_64>_744_4096[95:64]>",
+        "CacheType": "<BV64 0x0>"
+      },
+      "address_info": {
+        "return address": "0x180003f79"
+      }
+    },
+    {
+      "timestamp": "2026-05-12T07:19:12.312995",
+      "vulnerability_type": "map physical memory",
+      "access_type": "MmMapIoSpace - PhysicalAddress controllable",
+      "ioctl": "0x9c4064a0",
+      "rip": "0x1801000e8",
+      "additional_info": {
+        "PhysicalAddress": "<BV64 *<BV64 SystemBuffer_237_64>_744_4096[63:0]>",
+        "NumberOfBytes": "<BV64 0x1>",
+        "CacheType": "<BV64 0x0>"
+      },
+      "address_info": {
+        "return address": "0x180003f79"
+      }
+    },
+    {
+      "timestamp": "2026-05-12T07:19:12.501190",
+      "vulnerability_type": "map physical memory",
+      "access_type": "MmMapIoSpace - PhysicalAddress controllable",
+      "ioctl": "0x9c4064a4",
+      "rip": "0x1801000e8",
+      "additional_info": {
+        "PhysicalAddress": "<BV64 *<BV64 SystemBuffer_237_64>_744_4096[63:0]>",
+        "NumberOfBytes": "<BV64 0x2>",
+        "CacheType": "<BV64 0x0>"
+      },
+      "address_info": {
+        "return address": "0x180003f79"
+      }
+    },
+    {
+      "timestamp": "2026-05-12T07:19:12.676916",
+      "vulnerability_type": "map physical memory",
+      "access_type": "MmMapIoSpace - PhysicalAddress controllable",
+      "ioctl": "0x9c406480",
+      "rip": "0x1801000e8",
+      "additional_info": {
+        "PhysicalAddress": "<BV64 *<BV64 SystemBuffer_237_64>_744_4096[63:0]>",
+        "NumberOfBytes": "<BV64 0x1>",
+        "CacheType": "<BV64 0x0>"
+      },
+      "address_info": {
+        "return address": "0x180003f79"
+      }
+    },
+    {
+      "timestamp": "2026-05-12T07:19:13.222832",
+      "vulnerability_type": "arbitrary in vuln",
+      "access_type": "",
+      "ioctl": "0x9c406418",
+      "rip": "0x18000836e",
+      "additional_info": {
+        "I/O Port": "<BV32 0x0 .. *<BV64 SystemBuffer_237_64>_744_4096[15:0]>"
+      },
+      "address_info": {}
+    },
+    {
+      "timestamp": "2026-05-12T07:19:52.930618",
+      "vulnerability_type": "map physical memory",
+      "access_type": "MmMapIoSpace - PhysicalAddress and NumberOfBytes controllable",
+      "ioctl": "0x9c406494",
+      "rip": "0x1801000e8",
+      "additional_info": {
+        "PhysicalAddress": "<BV64 *<BV64 SystemBuffer_237_64>_744_4096[63:0]>",
+        "NumberOfBytes": "<BV64 0x0 .. *<BV64 SystemBuffer_237_64>_744_4096[95:64] .. 0>",
+        "CacheType": "<BV64 0x0>"
+      },
+      "address_info": {
+        "return address": "0x180003f79"
+      }
+    },
+    {
+      "timestamp": "2026-05-12T07:19:53.258307",
+      "vulnerability_type": "map physical memory",
+      "access_type": "MmMapIoSpace - PhysicalAddress and NumberOfBytes controllable",
+      "ioctl": "0x9c4064b0",
+      "rip": "0x1801000e8",
+      "additional_info": {
+        "PhysicalAddress": "<BV64 *<BV64 SystemBuffer_237_64>_744_4096[63:0]>",
+        "NumberOfBytes": "<BV64 0x0 .. *<BV64 SystemBuffer_237_64>_744_4096[95:64] .. 0>",
+        "CacheType": "<BV64 0x0>"
+      },
+      "address_info": {
+        "return address": "0x180003f79"
+      }
+    },
+    {
+      "timestamp": "2026-05-12T07:19:53.375312",
+      "vulnerability_type": "arbitrary in vuln",
+      "access_type": "",
+      "ioctl": "0x9c406408",
+      "rip": "0x18000838e",
+      "additional_info": {
+        "I/O Port": "<BV32 0x0 .. *<BV64 SystemBuffer_237_64>_744_4096[15:0]>"
+      },
+      "address_info": {}
+    },
+    {
+      "timestamp": "2026-05-12T07:19:53.580562",
+      "vulnerability_type": "map physical memory",
+      "access_type": "MmMapIoSpace - PhysicalAddress controllable",
+      "ioctl": "0x9c4064a8",
+      "rip": "0x1801000e8",
+      "additional_info": {
+        "PhysicalAddress": "<BV64 *<BV64 SystemBuffer_237_64>_744_4096[63:0]>",
+        "NumberOfBytes": "<BV64 0x4>",
+        "CacheType": "<BV64 0x0>"
+      },
+      "address_info": {
+        "return address": "0x180003f79"
+      }
+    },
+    {
+      "timestamp": "2026-05-12T07:19:53.819586",
+      "vulnerability_type": "map physical memory",
+      "access_type": "MmMapIoSpace - PhysicalAddress and NumberOfBytes controllable",
+      "ioctl": "0x9c4064b8",
+      "rip": "0x1801000e8",
+      "additional_info": {
+        "PhysicalAddress": "<BV64 *<BV64 SystemBuffer_237_64>_744_4096[63:0]>",
+        "NumberOfBytes": "<BV64 0x0 .. *<BV64 SystemBuffer_237_64>_744_4096[95:64] .. 0>",
+        "CacheType": "<BV64 0x0>"
+      },
+      "address_info": {
+        "return address": "0x180003f79"
+      }
+    },
+    {
+      "timestamp": "2026-05-12T07:19:56.286226",
+      "vulnerability_type": "MDL Arbitrary virtual address mapping",
+      "access_type": "IoAllocateMdl - VirtualAddress and Length controllable",
+      "ioctl": "0x9c406500",
+      "rip": "0x1801000f8",
+      "additional_info": {
+        "VirtualAddress": "<BV64 *<BV64 SystemBuffer_237_64>_744_4096[191:128]>",
+        "Length": "<BV64 0x0 .. *<BV64 SystemBuffer_237_64>_744_4096[95:64]>"
+      },
+      "address_info": {
+        "return address": "0x180004041"
+      }
+    },
+    {
+      "timestamp": "2026-05-12T07:19:56.301023",
+      "vulnerability_type": "MDL Arbitrary virtual address mapping",
+      "access_type": "MmMapLockedPages - MemoryDescriptorList controllable",
+      "ioctl": "0x9c406500",
+      "rip": "0x1801000d0",
+      "additional_info": {
+        "MemoryDescriptorList": "<BV64 0x44590000>",
+        "AccessMode": "<BV64 0x0 .. *<BV64 SystemBuffer_237_64>_744_4096[95:72] .. 1>",
+        "MdlVirtualAddress": "<BV64 *<BV64 SystemBuffer_237_64>_744_4096[191:128]>",
+        "MdlLength": "<BV64 0x0 .. *<BV64 SystemBuffer_237_64>_744_4096[95:64]>"
+      },
+      "address_info": {
+        "return address": "0x180004066"
+      }
+    },
+    {
+      "timestamp": "2026-05-12T07:19:56.579263",
+      "vulnerability_type": "map physical memory",
+      "access_type": "ZwMapViewOfSection - unknown handle",
+      "ioctl": "0x9c406500",
+      "rip": "0x180100178",
+      "additional_info": {
+        "SectionHandle": "<BV64 ZwOpenSection_0x180004157_879_64>",
+        "ProcessHandle": "<BV64 0xffffffffffffffff>",
+        "BaseAddress": "<BV64 0x7fffffffffefe58>",
+        "CommitSize": "<BV64 0x0>",
+        "ViewSize": "<BV64 0x7fffffffffefe48>"
+      },
+      "address_info": {
+        "return address": "0x18000423b"
+      }
+    },
+    {
+      "timestamp": "2026-05-12T07:19:56.853061",
+      "vulnerability_type": "arbitrary out vuln",
+      "access_type": "",
+      "ioctl": "0x9c40a440",
+      "rip": "0x180008623",
+      "additional_info": {
+        "I/O Port": "<BV32 0x0 .. *<BV64 SystemBuffer_237_64>_744_4096[15:0]>",
+        "Value": "<BV32 0x0 .. *<BV64 SystemBuffer_237_64>_744_4096[39:32]>"
+      },
+      "address_info": {}
+    }
+  ]
+}
