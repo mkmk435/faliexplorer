@@ -1,0 +1,153 @@
+{
+  "driver_name": "HEVD",
+  "generated_at": "2026-05-13T02:59:35.929563",
+  "total_vulnerabilities": 11,
+  "vulnerabilities": [
+    {
+      "timestamp": "2026-05-13T02:56:01.277662",
+      "vulnerability_type": "Write NULL on controllable address",
+      "access_type": "write",
+      "ioctl": "0x222047",
+      "rip": "0x1400881f1",
+      "additional_info": {},
+      "address_info": {
+        "write to": "<BV64 *<BV64 Type3InputBuffer_33_64>_44_4096[63:0]>"
+      }
+    },
+    {
+      "timestamp": "2026-05-13T02:56:02.054205",
+      "vulnerability_type": "Memory disclosure",
+      "access_type": "memcpy - read out of bound inside my buffer",
+      "ioctl": "0x22204f",
+      "rip": "0x1400011c0",
+      "additional_info": {
+        "dest": "<BV64 UserBuffer_34_64>",
+        "src": "<BV64 ExAllocatePoolWithTag_0x140086f5d_77_64>",
+        "size": "<BV64 0x0 .. OutputBufferLength_27_32>"
+      },
+      "address_info": {
+        "return address": "0x140087077"
+      }
+    },
+    {
+      "timestamp": "2026-05-13T02:56:06.527607",
+      "vulnerability_type": "Memory disclosure",
+      "access_type": "memcpy - read out of bound inside my buffer",
+      "ioctl": "0x22203f",
+      "rip": "0x1400011c0",
+      "additional_info": {
+        "dest": "<BV64 UserBuffer_34_64>",
+        "src": "<BV64 ExAllocatePoolWithTag_0x140086d3b_139_64>",
+        "size": "<BV64 0x0 .. OutputBufferLength_27_32>"
+      },
+      "address_info": {
+        "return address": "0x140086e55"
+      }
+    },
+    {
+      "timestamp": "2026-05-13T02:58:11.288208",
+      "vulnerability_type": "arbitrary shellcode execution",
+      "access_type": "",
+      "ioctl": "0x222023",
+      "rip": "0x1337",
+      "additional_info": {},
+      "address_info": {
+        "function address": "<BV64 *<BV64 Type3InputBuffer_33_64>_235_4096[127:64]>",
+        "return address": "0x14008754e"
+      }
+    },
+    {
+      "timestamp": "2026-05-13T02:58:53.304771",
+      "vulnerability_type": "Stack buffer overflow",
+      "access_type": "memcpy - return address controllable",
+      "ioctl": "0x222037",
+      "rip": "0x1400011c0",
+      "additional_info": {
+        "dest": "<BV64 0x7fffffffffef750>",
+        "src": "<BV64 *<BV64 Type3InputBuffer_33_64>_828_4096[63:0]>",
+        "size": "<BV64 *<BV64 Type3InputBuffer_33_64>_828_4096[127:64]>"
+      },
+      "address_info": {
+        "return address": "0x140086916"
+      }
+    },
+    {
+      "timestamp": "2026-05-13T02:58:53.533014",
+      "vulnerability_type": "read/write controllable address",
+      "access_type": "read",
+      "ioctl": "0x222037",
+      "rip": "0x1400011c0",
+      "additional_info": {},
+      "address_info": {
+        "read from": "<BV64 *<BV64 Type3InputBuffer_33_64>_828_4096[63:0]>"
+      }
+    },
+    {
+      "timestamp": "2026-05-13T02:58:57.065420",
+      "vulnerability_type": "Stack buffer overflow",
+      "access_type": "memcpy - return address controllable",
+      "ioctl": "0x222007",
+      "rip": "0x1400011c0",
+      "additional_info": {
+        "dest": "<BV64 0x7fffffffffefd20>",
+        "src": "<BV64 Type3InputBuffer_33_64>",
+        "size": "<BV64 0x0 .. InputBufferLength_28_32>"
+      },
+      "address_info": {
+        "return address": "0x1400867b9"
+      }
+    },
+    {
+      "timestamp": "2026-05-13T02:58:59.731035",
+      "vulnerability_type": "read/write controllable address",
+      "access_type": "read",
+      "ioctl": "0x22200b",
+      "rip": "0x140085f1a",
+      "additional_info": {},
+      "address_info": {
+        "read from": "<BV64 *<BV64 Type3InputBuffer_33_64>_929_4096[63:0]>"
+      }
+    },
+    {
+      "timestamp": "2026-05-13T02:58:59.800615",
+      "vulnerability_type": "read/write controllable address",
+      "access_type": "write",
+      "ioctl": "0x22200b",
+      "rip": "0x140085f1d",
+      "additional_info": {},
+      "address_info": {
+        "write to": "<BV64 *<BV64 Type3InputBuffer_33_64>_929_4096[127:64]>"
+      }
+    },
+    {
+      "timestamp": "2026-05-13T02:59:01.781269",
+      "vulnerability_type": "Pool buffer overflow",
+      "access_type": "memcpy - size controllable and larger than buffer",
+      "ioctl": "0x22200f",
+      "rip": "0x1400011c0",
+      "additional_info": {
+        "dest": "<BV64 ExAllocatePoolWithTag_0x140085fd3_969_64>",
+        "src": "<BV64 Type3InputBuffer_33_64>",
+        "size": "<BV64 0x0 .. InputBufferLength_28_32>"
+      },
+      "address_info": {
+        "return address": "0x1400860dd"
+      }
+    },
+    {
+      "timestamp": "2026-05-13T02:59:35.929517",
+      "vulnerability_type": "Stack buffer overflow",
+      "access_type": "memcpy - return address controllable",
+      "ioctl": "0x222003",
+      "rip": "0x1400011c0",
+      "additional_info": {
+        "dest": "<BV64 0x7fffffffffef740>",
+        "src": "<BV64 Type3InputBuffer_33_64>",
+        "size": "<BV64 0x0 .. InputBufferLength_28_32>"
+      },
+      "address_info": {
+        "return address": "0x140086683"
+      }
+    }
+  ]
+}

@@ -38,6 +38,18 @@ except Exception as exc:
 else:
     PE_ANALYZER_IMPORT_ERROR = None
 
+try:
+    from deepseek_vuln_report import (
+        VulnerabilityReportError,
+        generate_deepseek_vulnerability_report,
+    )
+except Exception as exc:
+    VulnerabilityReportError = RuntimeError
+    generate_deepseek_vulnerability_report = None
+    DEEPSEEK_REPORT_IMPORT_ERROR = str(exc)
+else:
+    DEEPSEEK_REPORT_IMPORT_ERROR = None
+
 app = Flask(__name__)
 app.config['SECRET_KEY'] = 'faliexplorer-report-viewer'
 app.config['UPLOAD_FOLDER'] = 'temp_uploads'
@@ -1273,6 +1285,49 @@ def get_statistics(report_name):
     }
 
     return jsonify(stats)
+
+@app.route('/api/generate_deepseek_report/<path:report_name>', methods=['POST'])
+def generate_deepseek_report(report_name):
+    """Generate an IDA-backed DeepSeek report for the selected loaded report."""
+    if report_name not in loaded_reports:
+        return jsonify({'error': 'Report not found'}), 404
+
+    if generate_deepseek_vulnerability_report is None:
+        return jsonify({
+            'error': f'DeepSeek report generator is unavailable: {DEEPSEEK_REPORT_IMPORT_ERROR}'
+        }), 500
+
+    data = _refresh_report_metadata(report_name)
+    driver_path = _resolve_driver_path(report_name, data)
+    if not driver_path:
+        return jsonify({
+            'error': (
+                'Driver binary could not be resolved for this report. '
+                'Load a directory that contains the JSON report and matching .sys/.dll/.exe, '
+                'or include driver_path/path in the JSON report.'
+            )
+        }), 400
+
+    options = request.get_json(silent=True) or {}
+
+    try:
+        result = generate_deepseek_vulnerability_report(
+            report_name,
+            data,
+            driver_path,
+            ida_path=options.get('ida_path'),
+            deepseek_api_key=options.get('deepseek_api_key'),
+            deepseek_model=options.get('deepseek_model'),
+            deepseek_base_url=options.get('deepseek_base_url'),
+            max_xref_depth=int(options.get('max_xref_depth') or 8),
+            max_callers_per_function=int(options.get('max_callers_per_function') or 24),
+        )
+    except VulnerabilityReportError as exc:
+        return jsonify({'error': str(exc)}), 400
+    except Exception as exc:
+        return jsonify({'error': f'Error generating DeepSeek report: {str(exc)}'}), 500
+
+    return jsonify({'success': True, 'result': result})
 
 @app.route('/static/<path:filename>')
 def serve_static(filename):

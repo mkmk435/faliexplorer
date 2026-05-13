@@ -312,7 +312,9 @@ def hookDriver(driver_path):
     globals.proj.hook_symbol('ZwMapViewOfSection', apiHooks.HookZwMapViewOfSection(cc=globals.cc))
     globals.proj.hook_symbol('MmMapIoSpace', apiHooks.HookMmMapIoSpace(cc=globals.cc))
     globals.proj.hook_symbol('MmMapIoSpaceEx', apiHooks.HookMmMapIoSpaceEx(cc=globals.cc))
-
+    globals.proj.hook_symbol('MmAllocateNonCachedMemory', apiHooks.HookMmAllocateNonCachedMemory(cc=globals.cc))
+    globals.proj.hook_symbol('MmAllocateContiguousMemorySpecifyCache', apiHooks.HookMmAllocateContiguousMemorySpecifyCache(cc=globals.cc))
+    
     globals.proj.hook_symbol('ExAllocatePool', apiHooks.HookExAllocatePool(cc=globals.cc))
     globals.proj.hook_symbol("ExAllocatePool2", apiHooks.HookExAllocatePool2(cc=globals.cc))
     globals.proj.hook_symbol("ExAllocatePool3", apiHooks.HookExAllocatePool3(cc=globals.cc))
@@ -338,8 +340,19 @@ def hookDriver(driver_path):
     globals.proj.hook_symbol('IoGetDeviceProperty', apiHooks.HookIoGetDeviceProperty(cc=globals.cc))
     globals.proj.hook_symbol('KeReleseMutex', apiHooks.HookKeReleaseMutex(cc=globals.cc))
 
+    globals.proj.hook_symbol('IoValidateDeviceIoControlAccess', apiHooks.HookIoValidateDeviceIoControlAccess(cc=globals.cc))
+    globals.proj.hook_symbol('IoCreateDeviceSecure', apiHooks.HookIoCreateDeviceSecure(cc=globals.cc))
+
     globals.ps_process_type = utils.resolve_import_symbol_in_object(globals.proj.loader.main_object, "PsProcessType")
 
+    # Hook indirect jump.
+    # for indirect_jump in globals.cfg.indirect_jumps:
+    #     indirect_jum_ins_addr = globals.cfg.indirect_jumps[indirect_jump].ins_addr
+    #     if len(globals.proj.factory.block(indirect_jum_ins_addr).capstone.insns):
+    #         op = globals.proj.factory.block(indirect_jum_ins_addr).capstone.insns[0].op_str
+    #         if op == 'rax' or op == 'rbx' or op == 'rcx' or op == 'rdx':
+    #             utils.print_debug(f'indirect jmp {hex(globals.cfg.indirect_jumps[indirect_jump].ins_addr)}')
+    #             globals.proj.hook(globals.cfg.indirect_jumps[indirect_jump].ins_addr, opcodes.indirect_jmp_hook, 0)
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()

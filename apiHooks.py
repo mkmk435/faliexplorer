@@ -545,9 +545,14 @@ class HookExAllocatePool(angr.SimProcedure):
     # Trace the allocated buffer by ExAllocatePool.
     def run(self, PoolType, NumberOfBytes):
         if globals.phase == 2:
+            # print("Dentro ExAllocatePoolWithTag Function hook")
+            if utils.tainted_buffer(NumberOfBytes):
+                utils.print_vuln('allocate pool', 'ExAllocatePool - NumberOfBytes controllable', self.state, {'PoolType': str(PoolType), 'NumberOfBytes': str(NumberOfBytes), 'Tag': str(Tag)})
+
             ret_addr = hex(self.state.callstack.ret_addr)
-            allocated_ptr = claripy.BVS(f"ExAllocatePool_{ret_addr}", self.state.arch.bits)
-            return allocated_ptr
+            allocated_ptr = claripy.BVS(f'ExAllocatePool_{ret_addr}', self.state.arch.bits)
+            self.state.globals['active_buffers'].append((str(allocated_ptr), int(self.state.solver.eval(NumberOfBytes))))
+            return allocated_ptr    
         else:
             return utils.next_base_addr()
 
@@ -594,7 +599,7 @@ class HookExAllocatePool2(angr.SimProcedure):
 
             ret_addr = hex(self.state.callstack.ret_addr)
             allocated_ptr = claripy.BVS(f'ExAllocatePool2_{ret_addr}', self.state.arch.bits)
-            globals.active_buffers[str(allocated_ptr)] = int(self.state.solver.eval(NumberOfBytes))
+            self.state.globals['active_buffers'].append((str(allocated_ptr), int(self.state.solver.eval(NumberOfBytes))))
             return allocated_ptr    
         else:
             return utils.next_base_addr()
@@ -614,7 +619,7 @@ class HookExAllocatePool3(angr.SimProcedure):
 
             ret_addr = hex(self.state.callstack.ret_addr)
             allocated_ptr = claripy.BVS(f'ExAllocatePool3_{ret_addr}', self.state.arch.bits)
-            globals.active_buffers[str(allocated_ptr)] = int(self.state.solver.eval(NumberOfBytes))
+            self.state.globals['active_buffers'].append((str(allocated_ptr), int(self.state.solver.eval(NumberOfBytes))))
             return allocated_ptr    
         else:
             return utils.next_base_addr()
@@ -740,11 +745,11 @@ class HookMemcpy(angr.SimProcedure):
         if utils.tainted_buffer(size):
             is_pool_buffer = False  # Track if we identified this as a pool buffer
             
-            # 1. Check for Pool Buffer Overflow
+            # # 1. Check for Pool Buffer Overflow
             for pool in globals.pools:
                 if pool in str(dest):
                     is_pool_buffer = True  # Mark that it belongs to a pool
-                    buf_size = globals.active_buffers[str(dest)]
+                    buf_size = self.state.globals['active_buffers'][globals.pools.index(pool)][1]
                     # print("Buffer size: ", buf_size)
 
                     tmp_state = self.state.copy()
@@ -754,7 +759,20 @@ class HookMemcpy(angr.SimProcedure):
                         utils.print_vuln('Pool buffer overflow', 'memcpy - size controllable and larger than buffer', self.state, {'dest': str(dest), 'src': str(src), 'size': str(size)}, {'return address': hex(self.state.callstack.ret_addr)})
                     
                     break  # We found the matching pool, no need to check other pools
+            # for pool in self.state.globals['active_buffers']:
+            #     # print("Checking pool: ", pool)
+            #     if pool[0] in str(dest):
+            #         is_pool_buffer = True  # Mark that it belongs to a pool
+            #         buf_size = pool[1]
+            #         # print("Buffer size: ", buf_size)
 
+            #         tmp_state = self.state.copy()
+            #         tmp_state.add_constraints(size > buf_size)
+
+            #         if tmp_state.solver.satisfiable():
+            #             utils.print_vuln('Pool buffer overflow', 'memcpy - size controllable and larger than buffer', self.state, {'dest': str(dest), 'src': str(src), 'size': str(size)}, {'return address': hex(self.state.callstack.ret_addr)})
+                    
+            #         break  # We found the matching pool, no need to check other pools
             # 2. Check for Stack Buffer Overflow (ONLY if it's not a pool buffer)
             if not is_pool_buffer:
             # if 1:
@@ -993,6 +1011,149 @@ class HookZwWriteFile(angr.SimProcedure):
                 )
 
         _write_success_io_status_block(self.state, IoStatusBlock, Length)
+        return 0
+
+
+class HookZwReadFile(angr.SimProcedure):
+    def run(self, FileHandle, Event, ApcRoutine, ApcContext, IoStatusBlock,
+            Buffer, Length, ByteOffset, Key):
+
+        if globals.phase == 2:
+            handle_info = _lookup_file_handle(self.state, FileHandle)
+
+            tracked_controlled_file = (
+                handle_info is not None and
+                handle_info[5]
+            )
+            unknown_symbolic_file = handle_info is None and FileHandle.symbolic
+
+            if tracked_controlled_file or unknown_symbolic_file:
+                additional_info = {
+                    'FileHandle': str(FileHandle),
+                    'Buffer': str(Buffer),
+                    'Length': str(Length),
+                    'ByteOffset': str(ByteOffset),
+                }
+
+                if handle_info is not None:
+                    additional_info['ObjectName'] = str(handle_info[1])
+                    additional_info['DesiredAccess'] = str(handle_info[2])
+                    additional_info['CreateDisposition'] = str(handle_info[3])
+                    additional_info['CreateOptions'] = str(handle_info[4])
+
+                utils.print_vuln(
+                    'arbitrary file read',
+                    'ZwReadFile - read from controllable file handle',
+                    self.state,
+                    additional_info,
+                    {'return address': hex(self.state.callstack.ret_addr)}
+                )
+
+            if utils.tainted_buffer(Buffer) or utils.tainted_buffer(Length) or utils.tainted_buffer(ByteOffset):
+                utils.print_vuln(
+                    'controlled file read parameters',
+                    'ZwReadFile - Buffer, Length, or ByteOffset controllable',
+                    self.state,
+                    {
+                        'FileHandle': str(FileHandle),
+                        'Buffer': str(Buffer),
+                        'Length': str(Length),
+                        'ByteOffset': str(ByteOffset),
+                    },
+                    {'return address': hex(self.state.callstack.ret_addr)}
+                )
+
+            # Model successful read: data coming from a controlled/unknown file
+            # should become symbolic so later uses can be detected.
+            try:
+                read_len = min(self.state.solver.eval(Length), 0x400)
+                if read_len > 0:
+                    ret_addr = hex(self.state.callstack.ret_addr)
+                    data = claripy.BVS(f'ZwReadFile_data_{ret_addr}', read_len * 8)
+                    self.state.memory.store(
+                        Buffer,
+                        data,
+                        read_len,
+                        disable_actions=True,
+                        inspect=False
+                    )
+            except Exception:
+                pass
+
+        _write_success_io_status_block(self.state, IoStatusBlock, Length)
+        return 0
+
+
+class HookZwSetInformationFile(angr.SimProcedure):
+    def run(self, FileHandle, IoStatusBlock, FileInformation, Length, FileInformationClass):
+        if globals.phase == 2:
+            handle_info = _lookup_file_handle(self.state, FileHandle)
+
+            tracked_controlled_file = (
+                handle_info is not None and
+                handle_info[5] and
+                _file_access_may_write(self.state, handle_info[2])
+            )
+            unknown_symbolic_file = handle_info is None and FileHandle.symbolic
+
+            dangerous_classes = {
+                10: 'FileRenameInformation',
+                11: 'FileLinkInformation',
+                13: 'FileDispositionInformation',
+                20: 'FileEndOfFileInformation',
+                64: 'FileDispositionInformationEx',
+                65: 'FileRenameInformationEx',
+                72: 'FileLinkInformationEx',
+            }
+
+            possible_classes = []
+            for cls_value, cls_name in dangerous_classes.items():
+                try:
+                    tmp_state = self.state.copy()
+                    tmp_state.solver.add(FileInformationClass == cls_value)
+                    if tmp_state.satisfiable():
+                        possible_classes.append(cls_name)
+                except Exception:
+                    pass
+
+            if (tracked_controlled_file or unknown_symbolic_file) and possible_classes:
+                additional_info = {
+                    'FileHandle': str(FileHandle),
+                    'FileInformation': str(FileInformation),
+                    'Length': str(Length),
+                    'FileInformationClass': str(FileInformationClass),
+                    'PossibleClasses': ', '.join(possible_classes),
+                }
+
+                if handle_info is not None:
+                    additional_info['ObjectName'] = str(handle_info[1])
+                    additional_info['DesiredAccess'] = str(handle_info[2])
+                    additional_info['CreateDisposition'] = str(handle_info[3])
+                    additional_info['CreateOptions'] = str(handle_info[4])
+
+                utils.print_vuln(
+                    'arbitrary file modification',
+                    'ZwSetInformationFile - dangerous operation on controllable file handle',
+                    self.state,
+                    additional_info,
+                    {'return address': hex(self.state.callstack.ret_addr)}
+                )
+
+            if utils.tainted_buffer(FileInformation) or utils.tainted_buffer(Length) or utils.tainted_buffer(FileInformationClass):
+                utils.print_vuln(
+                    'controlled file information parameters',
+                    'ZwSetInformationFile - FileInformation, Length, or FileInformationClass controllable',
+                    self.state,
+                    {
+                        'FileHandle': str(FileHandle),
+                        'FileInformation': str(FileInformation),
+                        'Length': str(Length),
+                        'FileInformationClass': str(FileInformationClass),
+                    },
+                    {'return address': hex(self.state.callstack.ret_addr)}
+                )
+
+        _write_success_io_status_block(self.state, IoStatusBlock)
         return 0
 
 
@@ -1481,3 +1642,137 @@ class HookMmMapLockedPagesSpecifyCache(angr.SimProcedure):
                     {'return address': hex(self.state.callstack.ret_addr)}
                 )
         return utils.next_base_addr()
+
+
+
+class HookIoValidateDeviceIoControlAccess(angr.SimProcedure):
+    def run(self, Irp, RequiredAccess):
+        if globals.phase == 2:
+            ret_addr = hex(self.state.callstack.ret_addr)
+
+            try:
+                irsp = self.state.mem[Irp].IRP.Tail.Overlay.s.u.CurrentStackLocation
+                ioctl_code = irsp.deref.IO_STACK_LOCATION.Parameters.DeviceIoControl.IoControlCode.resolved
+            except Exception:
+                ioctl_code = globals.IoControlCode
+
+            try:
+                tmp_state = self.state.copy()
+                tmp_state.solver.add(RequiredAccess == 0)
+                no_access_required = tmp_state.satisfiable()
+            except Exception:
+                no_access_required = False
+
+            if utils.tainted_buffer(RequiredAccess) or no_access_required:
+                utils.print_vuln(
+                    'weak ioctl access validation',
+                    'IoValidateDeviceIoControlAccess - RequiredAccess controllable or FILE_ANY_ACCESS',
+                    self.state,
+                    {
+                        'Irp': str(Irp),
+                        'IoControlCode': str(ioctl_code),
+                        'RequiredAccess': str(RequiredAccess),
+                    },
+                    {'return address': ret_addr}
+                )
+
+        return 0
+
+
+class HookIoCreateDeviceSecure(angr.SimProcedure):
+    def run(self, DriverObject, DeviceExtensionSize, DeviceName, DeviceType,
+            DeviceCharacteristics, Exclusive, DefaultSDDLString,
+            DeviceClassGuid, DeviceObject):
+
+        # Initialize DEVICE_OBJECT, same idea as IoCreateDevice.
+        devobjaddr = utils.next_base_addr()
+        self.state.globals['device_object_addr'] = devobjaddr
+
+        device_object = claripy.BVS('device_object_secure', 8 * 0x400)
+        self.state.memory.store(
+            devobjaddr,
+            device_object,
+            0x400,
+            disable_actions=True,
+            inspect=False
+        )
+
+        self.state.mem[devobjaddr].DEVICE_OBJECT.Flags = 0
+        self.state.mem[DeviceObject].PDEVICE_OBJECT = devobjaddr
+
+        # Initialize DeviceExtension.
+        new_device_extension_addr = utils.next_base_addr()
+        try:
+            size = self.state.solver.min(DeviceExtensionSize)
+        except Exception:
+            size = 0x100
+
+        device_extension = claripy.BVV(0, 8 * size)
+        self.state.memory.store(
+            new_device_extension_addr,
+            device_extension,
+            size,
+            disable_actions=True,
+            inspect=False
+        )
+        self.state.mem[devobjaddr].DEVICE_OBJECT.DeviceExtension = new_device_extension_addr
+
+        # Store device name for the report/basic info.
+        device_name_str = utils.read_buffer_from_unicode_string(self.state, DeviceName)
+        if device_name_str:
+            if "DeviceName" not in globals.basic_info:
+                globals.basic_info["DeviceName"] = []
+
+            if device_name_str not in globals.basic_info["DeviceName"]:
+                globals.basic_info["DeviceName"].append(device_name_str)
+
+        # Store SDDL too: useful because IoCreateDeviceSecure is only as good as
+        # the security descriptor it receives.
+        try:
+            sddl_str = utils.read_buffer_from_unicode_string(self.state, DefaultSDDLString)
+        except Exception:
+            sddl_str = None
+
+        if sddl_str:
+            if "DeviceSDDL" not in globals.basic_info:
+                globals.basic_info["DeviceSDDL"] = []
+
+            if sddl_str not in globals.basic_info["DeviceSDDL"]:
+                globals.basic_info["DeviceSDDL"].append(sddl_str)
+
+            weak_sddl_markers = (
+                "WD",      # Everyone / World
+                "BU",      # Built-in Users
+                "AU",      # Authenticated Users
+                "S-1-1-0", # Everyone SID
+                "S-1-5-11" # Authenticated Users SID
+            )
+
+            dangerous_access_markers = (
+                "GA",      # GENERIC_ALL
+                "GW",      # GENERIC_WRITE
+                "GRGW",
+                "GXGW",
+                "0x10000000",
+                "0x40000000",
+            )
+
+            if globals.phase == 2:
+                has_weak_principal = any(marker in sddl_str for marker in weak_sddl_markers)
+                has_dangerous_access = any(marker in sddl_str for marker in dangerous_access_markers)
+
+                if has_weak_principal and has_dangerous_access:
+                    utils.print_vuln(
+                        'weak device security descriptor',
+                        'IoCreateDeviceSecure - weak SDDL grants broad access',
+                        self.state,
+                        {
+                            'DeviceName': str(device_name_str),
+                            'DefaultSDDLString': str(sddl_str),
+                            'DeviceType': str(DeviceType),
+                            'DeviceCharacteristics': str(DeviceCharacteristics),
+                        },
+                        {'return address': hex(self.state.callstack.ret_addr)}
+                    )
+
+        return 0

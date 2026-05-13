@@ -52,6 +52,7 @@
     <div id="tabsContainer" class="tabs hidden"></div>
     <div id="driverFilterContainer" class="hidden"></div>
     <div id="statsContainer" class="hidden"></div>
+    <div id="aiReportContainer" class="hidden"></div>
     <div id="filterSection" class="hidden"></div>
     <div id="vulnerabilitiesContainer" class="hidden"></div>
 </div>
@@ -153,6 +154,7 @@ $(document).ready(function() {
                     $('#tabsContainer').addClass('hidden').empty();
                     $('#driverFilterContainer').addClass('hidden').empty();
                     $('#statsContainer').addClass('hidden').empty();
+                    $('#aiReportContainer').addClass('hidden').empty();
                     $('#filterSection').addClass('hidden').empty();
                     $('#vulnerabilitiesContainer').addClass('hidden').empty();
                     currentReport = null;
@@ -216,6 +218,7 @@ function removeReport(reportName) {
                     selectReport(nextTab.data('reportName'));
                 } else {
                     $('#statsContainer').addClass('hidden').empty();
+                    $('#aiReportContainer').addClass('hidden').empty();
                     $('#filterSection').addClass('hidden').empty();
                     $('#vulnerabilitiesContainer').addClass('hidden').empty();
                     currentReport = null;
@@ -233,6 +236,7 @@ function loadReportData(reportName) {
     $.get(`/api/get_statistics/${encodeURIComponent(reportName)}`, function(stats) {
         updateReportSummaryFromStats(reportName, stats);
         displayStats(stats);
+        displayAiReportControls(reportName, stats);
     }).fail(function(xhr) {
         showAlert('Error loading statistics: ' + getErrorMessage(xhr), 'error');
     });
@@ -508,10 +512,75 @@ function applyDriverClassFilter(allowSelectionChange = true) {
         } else {
             currentReport = null;
             $('#statsContainer').addClass('hidden').empty();
+            $('#aiReportContainer').addClass('hidden').empty();
             $('#filterSection').addClass('hidden').empty();
             $('#vulnerabilitiesContainer').addClass('hidden').empty();
         }
     }
+}
+
+function displayAiReportControls(reportName, stats) {
+    const container = $('#aiReportContainer');
+    container.removeClass('hidden');
+    const metadata = (stats && stats.driver_metadata) || {};
+    const driverFile = metadata.driver_file || metadata.driver_path || 'Resolved from the loaded report';
+
+    container.html(`
+        <div class="card">
+            <h2 style="margin-bottom: 15px; color: #333;"><i class="fas fa-microchip"></i> DeepSeek Vulnerability Report</h2>
+            <div style="display: flex; align-items: center; justify-content: space-between; gap: 15px; flex-wrap: wrap;">
+                <div style="color: #555;">
+                    <div><strong>Driver:</strong> ${escapeHtml(driverFile)}</div>
+                    <div style="font-size: 0.9em; margin-top: 4px;">Requires IDA on Ubuntu and <code>DEEPSEEK_API_KEY</code> in the server environment.</div>
+                </div>
+                <button type="button" class="btn" id="generateAiReportBtn" onclick="generateAiReport('${escapeJs(reportName)}')">
+                    <i class="fas fa-wand-magic-sparkles"></i> Generate Report
+                </button>
+            </div>
+            <div id="aiReportResult" style="margin-top: 15px;"></div>
+        </div>
+    `);
+}
+
+function generateAiReport(reportName) {
+    const button = $('#generateAiReportBtn');
+    const result = $('#aiReportResult');
+    button.prop('disabled', true).html('<span class="loading"></span> Generating...');
+    result.html('<div class="alert alert-info">Running IDA decompilation, walking caller xrefs, and sending context to DeepSeek. This can take a while.</div>');
+
+    $.ajax({
+        url: `/api/generate_deepseek_report/${encodeURIComponent(reportName)}`,
+        type: 'POST',
+        contentType: 'application/json',
+        data: JSON.stringify({}),
+        success: function(response) {
+            if (!response.success) {
+                result.html(`<div class="alert alert-error">${escapeHtml(response.error || 'Unknown error')}</div>`);
+                return;
+            }
+
+            const report = response.result || {};
+            const files = report.output_files || {};
+            result.html(`
+                <div class="alert alert-success">
+                    <strong>Generated DeepSeek report.</strong>
+                    <div style="margin-top: 8px;">JSON: <code>${escapeHtml(files.json || '')}</code></div>
+                    <div>Markdown: <code>${escapeHtml(files.markdown || '')}</code></div>
+                    <div>Functions decompiled once: ${escapeHtml(report.unique_functions_decompiled || 0)}</div>
+                </div>
+                <details open>
+                    <summary style="font-weight: 600; color: #666; cursor: pointer;">DeepSeek Summary</summary>
+                    <pre style="margin-top: 10px; padding: 10px; background: #f9f9f9; border-radius: 5px; white-space: pre-wrap; word-break: break-word; font-size: 0.9em;">${escapeHtml(report.deepseek_summary || '')}</pre>
+                </details>
+            `);
+        },
+        error: function(xhr) {
+            result.html(`<div class="alert alert-error">${escapeHtml(getErrorMessage(xhr))}</div>`);
+        },
+        complete: function() {
+            button.prop('disabled', false).html('<i class="fas fa-wand-magic-sparkles"></i> Generate Report');
+        }
+    });
 }
 
 function buildReportSummary(reportName, data) {
@@ -715,6 +784,10 @@ function escapeHtml(value) {
             "'": '&#39;'
         }[char];
     });
+}
+
+function escapeJs(value) {
+    return String(value ?? '').replace(/\\/g, '\\\\').replace(/'/g, "\\'");
 }
 </script>
 {% endblock %}

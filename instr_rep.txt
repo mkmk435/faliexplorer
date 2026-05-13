@@ -1,0 +1,6 @@
+export FALIEXPLORER_IDA_PATH=/path/to/idat64
+export DEEPSEEK_API_KEY=your_key_here
+python3 report_viewer_server.py
+
+
+export DEEPSEEK_MODEL=deepseek-reasoner
