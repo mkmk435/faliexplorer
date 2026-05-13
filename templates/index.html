@@ -561,6 +561,7 @@ function generateAiReport(reportName) {
 
             const report = response.result || {};
             const files = report.output_files || {};
+            const summary = report.deepseek_summary || '';
             result.html(`
                 <div class="alert alert-success">
                     <strong>Generated DeepSeek report.</strong>
@@ -568,9 +569,15 @@ function generateAiReport(reportName) {
                     <div>Markdown: <code>${escapeHtml(files.markdown || '')}</code></div>
                     <div>Functions decompiled once: ${escapeHtml(report.unique_functions_decompiled || 0)}</div>
                 </div>
-                <details open>
+                <details open style="margin-bottom: 12px;">
                     <summary style="font-weight: 600; color: #666; cursor: pointer;">DeepSeek Summary</summary>
-                    <pre style="margin-top: 10px; padding: 10px; background: #f9f9f9; border-radius: 5px; white-space: pre-wrap; word-break: break-word; font-size: 0.9em;">${escapeHtml(report.deepseek_summary || '')}</pre>
+                    <div class="markdown-report" style="margin-top: 10px; padding: 16px; background: #f9f9f9; border: 1px solid #eee; border-radius: 5px; line-height: 1.55;">
+                        ${renderMarkdown(summary)}
+                    </div>
+                </details>
+                <details>
+                    <summary style="font-weight: 600; color: #666; cursor: pointer;">Raw Markdown</summary>
+                    <pre style="margin-top: 10px; padding: 10px; background: #f9f9f9; border-radius: 5px; white-space: pre-wrap; word-break: break-word; font-size: 0.9em;">${escapeHtml(summary)}</pre>
                 </details>
             `);
         },
@@ -770,6 +777,169 @@ function formatTriState(value) {
     return 'Unknown';
 }
 
+function renderMarkdown(markdown) {
+    const lines = String(markdown || '').replace(/\r\n/g, '\n').split('\n');
+    const html = [];
+    let paragraph = [];
+    let listType = null;
+    let listItems = [];
+    let inCode = false;
+    let codeLang = '';
+    let codeLines = [];
+
+    function flushParagraph() {
+        if (paragraph.length === 0) return;
+        html.push(`<p style="margin: 0 0 12px;">${renderInlineMarkdown(paragraph.join(' '))}</p>`);
+        paragraph = [];
+    }
+
+    function flushList() {
+        if (!listType) return;
+        const tag = listType === 'ol' ? 'ol' : 'ul';
+        html.push(`<${tag} style="margin: 0 0 12px 22px;">${listItems.map(item => `<li style="margin: 4px 0;">${renderInlineMarkdown(item)}</li>`).join('')}</${tag}>`);
+        listType = null;
+        listItems = [];
+    }
+
+    function flushCode() {
+        html.push(`<pre style="margin: 0 0 12px; padding: 12px; background: #1f2937; color: #f8fafc; border-radius: 5px; overflow-x: auto;"><code>${codeLang ? `<span style="color: #93c5fd;">${escapeHtml(codeLang)}</span>\n` : ''}${escapeHtml(codeLines.join('\n'))}</code></pre>`);
+        inCode = false;
+        codeLang = '';
+        codeLines = [];
+    }
+
+    for (let index = 0; index < lines.length; index += 1) {
+        const line = lines[index];
+        const trimmed = line.trim();
+
+        if (trimmed.startsWith('```')) {
+            if (inCode) {
+                flushCode();
+            } else {
+                flushParagraph();
+                flushList();
+                inCode = true;
+                codeLang = trimmed.slice(3).trim();
+            }
+            continue;
+        }
+
+        if (inCode) {
+            codeLines.push(line);
+            continue;
+        }
+
+        if (!trimmed) {
+            flushParagraph();
+            flushList();
+            continue;
+        }
+
+        const table = readMarkdownTable(lines, index);
+        if (table) {
+            flushParagraph();
+            flushList();
+            html.push(table.html);
+            index = table.nextIndex - 1;
+            continue;
+        }
+
+        const heading = trimmed.match(/^(#{1,4})\s+(.+)$/);
+        if (heading) {
+            flushParagraph();
+            flushList();
+            const level = heading[1].length;
+            const size = ['1.45em', '1.25em', '1.08em', '1em'][level - 1];
+            html.push(`<h${level + 1} style="margin: 16px 0 8px; font-size: ${size}; color: #222;">${renderInlineMarkdown(heading[2])}</h${level + 1}>`);
+            continue;
+        }
+
+        if (/^(-{3,}|\*{3,})$/.test(trimmed)) {
+            flushParagraph();
+            flushList();
+            html.push('<hr style="border: 0; border-top: 1px solid #ddd; margin: 16px 0;">');
+            continue;
+        }
+
+        const quote = trimmed.match(/^>\s?(.*)$/);
+        if (quote) {
+            flushParagraph();
+            flushList();
+            html.push(`<blockquote style="margin: 0 0 12px; padding: 8px 12px; border-left: 4px solid #667eea; background: #eef2ff;">${renderInlineMarkdown(quote[1])}</blockquote>`);
+            continue;
+        }
+
+        const bullet = trimmed.match(/^[-*]\s+(.+)$/);
+        const numbered = trimmed.match(/^\d+\.\s+(.+)$/);
+        if (bullet || numbered) {
+            const nextType = numbered ? 'ol' : 'ul';
+            flushParagraph();
+            if (listType && listType !== nextType) {
+                flushList();
+            }
+            listType = nextType;
+            listItems.push((bullet || numbered)[1]);
+            continue;
+        }
+
+        paragraph.push(trimmed);
+    }
+
+    if (inCode) flushCode();
+    flushParagraph();
+    flushList();
+
+    return html.join('\n') || '<p style="margin: 0;">No DeepSeek content returned.</p>';
+}
+
+function readMarkdownTable(lines, startIndex) {
+    const header = lines[startIndex];
+    const separator = lines[startIndex + 1] || '';
+    if (!header.includes('|') || !/^\s*\|?\s*:?-{3,}:?\s*(\|\s*:?-{3,}:?\s*)+\|?\s*$/.test(separator)) {
+        return null;
+    }
+
+    const rows = [];
+    let index = startIndex;
+    while (index < lines.length && lines[index].includes('|') && lines[index].trim()) {
+        rows.push(splitMarkdownTableRow(lines[index]));
+        index += 1;
+    }
+
+    if (rows.length < 2) return null;
+    const headings = rows[0];
+    const bodyRows = rows.slice(2);
+
+    return {
+        nextIndex: index,
+        html: `
+            <div style="overflow-x: auto; margin: 0 0 14px;">
+                <table style="border-collapse: collapse; width: 100%; font-size: 0.95em;">
+                    <thead><tr>${headings.map(cell => `<th style="border: 1px solid #ddd; padding: 8px; background: #eef2ff; text-align: left;">${renderInlineMarkdown(cell)}</th>`).join('')}</tr></thead>
+                    <tbody>${bodyRows.map(row => `<tr>${row.map(cell => `<td style="border: 1px solid #ddd; padding: 8px; vertical-align: top;">${renderInlineMarkdown(cell)}</td>`).join('')}</tr>`).join('')}</tbody>
+                </table>
+            </div>
+        `
+    };
+}
+
+function splitMarkdownTableRow(line) {
+    const trimmed = line.trim().replace(/^\|/, '').replace(/\|$/, '');
+    return trimmed.split('|').map(cell => cell.trim());
+}
+
+function renderInlineMarkdown(value) {
+    return String(value ?? '').split(/(`[^`]*`)/g).map(part => {
+        if (part.startsWith('`') && part.endsWith('`')) {
+            return `<code style="background: #eef2ff; border: 1px solid #dbe4ff; border-radius: 4px; padding: 1px 4px;">${escapeHtml(part.slice(1, -1))}</code>`;
+        }
+
+        return escapeHtml(part)
+            .replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>')
+            .replace(/\*([^*]+)\*/g, '<em>$1</em>');
+    }).join('');
+}
+
 function getErrorMessage(xhr) {
     return (xhr.responseJSON && xhr.responseJSON.error) || xhr.statusText || 'Unknown error';
 }
@@ -787,7 +957,11 @@ function escapeHtml(value) {
 }
 
 function escapeJs(value) {
-    return String(value ?? '').replace(/\\/g, '\\\\').replace(/'/g, "\\'");
+    return String(value ?? '')
+        .replace(/\\/g, '\\\\')
+        .replace(/'/g, "\\'")
+        .replace(/\r/g, '\\r')
+        .replace(/\n/g, '\\n');
 }
 </script>
 {% endblock %}
