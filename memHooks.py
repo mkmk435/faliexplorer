@@ -218,12 +218,14 @@ def b_mem_write(state):
                             
                             if tmp_state.satisfiable():
                                 tmp_state.solver.add(tmp_state.inspect.mem_write_expr == 0x87)
+                                tmp_state2.solver.add(tmp_state2.inspect.mem_write_expr == 0x00)
+
                                 if tmp_state.satisfiable():
                                     utils.print_vuln('read/write controllable address', 'write', state, {}, {'write to': str(state.inspect.mem_write_address)})
+                                elif tmp_state2.satisfiable():
+                                    utils.print_vuln('Write NULL on controllable address', 'write', state, {}, {'write to': str(state.inspect.mem_write_address)})
                                 else:
-                                    tmp_state2.solver.add(tmp_state2.inspect.mem_write_expr == 0x00)
-                                    if tmp_state2.satisfiable():
-                                        utils.print_vuln('Write NULL on controllable address', 'write', state, {}, {'write to': str(state.inspect.mem_write_address)})
+                                    utils.print_vuln('controllable address but not controllable value', 'write', state, {}, {'write to': str(state.inspect.mem_write_address)})
 
                         else:
                             # If SystemBuffer is not a pointer, check whether it can be null.
@@ -248,14 +250,16 @@ def b_mem_write(state):
                         if tmp_state.satisfiable():
                             # Se l'indirizzo è controllabile, testiamo se il VALORE è controllabile (WWW)
                             tmp_state.solver.add(tmp_state.inspect.mem_write_expr == 0x87)
-                            
+                            tmp_state2.solver.add(tmp_state2.inspect.mem_write_expr == 0x00)
+
                             if tmp_state.satisfiable():
                                 utils.print_vuln('read/write controllable address', 'write', state, {}, {'write to': str(state.inspect.mem_write_address)})
+
+                            # Se il valore non è arbitrario, testiamo se almeno possiamo scriverci NULL
+                            elif tmp_state2.satisfiable():
+                                utils.print_vuln('Write NULL on controllable address', 'write', state, {}, {'write to': str(state.inspect.mem_write_address)})
                             else:
-                                # Se il valore non è arbitrario, testiamo se almeno possiamo scriverci NULL
-                                tmp_state2.solver.add(tmp_state2.inspect.mem_write_expr == 0x00)
-                                if tmp_state2.satisfiable():
-                                    utils.print_vuln('Write NULL on controllable address', 'write', state, {}, {'write to': str(state.inspect.mem_write_address)})
+                                utils.print_vuln('controllable address but not controllable value', 'write', state, {}, {'write to': str(state.inspect.mem_write_address)})
 
                 else:
                     # Only detect the allocated memory in case of false positive.

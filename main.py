@@ -319,6 +319,8 @@ def hookDriver(driver_path):
     globals.proj.hook_symbol("ExAllocatePool2", apiHooks.HookExAllocatePool2(cc=globals.cc))
     globals.proj.hook_symbol("ExAllocatePool3", apiHooks.HookExAllocatePool3(cc=globals.cc))
     globals.proj.hook_symbol("ExAllocatePoolWithTag", apiHooks.HookExAllocatePoolWithTag(cc=globals.cc))
+    globals.proj.hook_symbol("ExAllocatePoolWithQuotaTag", apiHooks.HookExAllocatePoolWithQuotaTag(cc=globals.cc))
+    globals.proj.hook_symbol("ExAllocatePoolZero", apiHooks.HookExAllocatePoolZero(cc=globals.cc))
 
     globals.proj.hook_symbol("ExFreePoolWithTag", apiHooks.HookExFreePoolWithTag(cc=globals.cc))
     globals.proj.hook_symbol("ExFreePool2", apiHooks.HookExFreePool2(cc=globals.cc))

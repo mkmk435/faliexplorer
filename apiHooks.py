@@ -583,7 +583,38 @@ class HookExAllocatePoolWithTag(angr.SimProcedure):
 #   [in] SIZE_T                                         NumberOfBytes,
 #   [in] ULONG                                          Tag
 # );
+class ExAllocatePoolWithQuotaTag(angr.SimProcedure):
+    def run(self, PoolType, NumberOfBytes, Tag):
+        if globals.phase == 2:
+            # print("Dentro ExAllocatePoolWithTag Function hook")
+            if utils.tainted_buffer(NumberOfBytes):
+                utils.print_vuln('allocate pool', 'ExAllocatePoolWithQuotaTag - NumberOfBytes controllable', self.state, {'PoolType': str(PoolType), 'NumberOfBytes': str(NumberOfBytes), 'Tag': str(Tag)})
 
+            ret_addr = hex(self.state.callstack.ret_addr)
+            allocated_ptr = claripy.BVS(f'ExAllocatePoolWithQuotaTag_{ret_addr}', self.state.arch.bits)
+            self.state.globals['active_buffers'].append((str(allocated_ptr), int(self.state.solver.eval(NumberOfBytes))))
+            return allocated_ptr    
+        else:
+            return utils.next_base_addr()
+
+# PVOID ExAllocatePoolZero(
+#   __drv_strictTypeMatch(__drv_typeExpr)POOL_TYPE PoolType,
+#   SIZE_T                                         NumberOfBytes,
+#   ULONG                                          Tag
+# );
+class ExAllocatePoolZero(angr.SimProcedure):
+    def run(self, PoolType, NumberOfBytes, Tag):
+        if globals.phase == 2:
+            # print("Dentro ExAllocatePoolWithTag Function hook")
+            if utils.tainted_buffer(NumberOfBytes):
+                utils.print_vuln('allocate pool', 'ExAllocatePoolZero - NumberOfBytes controllable', self.state, {'PoolType': str(PoolType), 'NumberOfBytes': str(NumberOfBytes), 'Tag': str(Tag)})
+
+            ret_addr = hex(self.state.callstack.ret_addr)
+            allocated_ptr = claripy.BVS(f'ExAllocatePoolZero_{ret_addr}', self.state.arch.bits)
+            self.state.globals['active_buffers'].append((str(allocated_ptr), int(self.state.solver.eval(NumberOfBytes))))
+            return allocated_ptr    
+        else:
+            return utils.next_base_addr()
 
 
 # DECLSPEC_RESTRICT PVOID ExAllocatePool2(
