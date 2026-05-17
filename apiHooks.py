@@ -583,7 +583,7 @@ class HookExAllocatePoolWithTag(angr.SimProcedure):
 #   [in] SIZE_T                                         NumberOfBytes,
 #   [in] ULONG                                          Tag
 # );
-class ExAllocatePoolWithQuotaTag(angr.SimProcedure):
+class HookExAllocatePoolWithQuotaTag(angr.SimProcedure):
     def run(self, PoolType, NumberOfBytes, Tag):
         if globals.phase == 2:
             # print("Dentro ExAllocatePoolWithTag Function hook")
@@ -602,7 +602,7 @@ class ExAllocatePoolWithQuotaTag(angr.SimProcedure):
 #   SIZE_T                                         NumberOfBytes,
 #   ULONG                                          Tag
 # );
-class ExAllocatePoolZero(angr.SimProcedure):
+class HookExAllocatePoolZero(angr.SimProcedure):
     def run(self, PoolType, NumberOfBytes, Tag):
         if globals.phase == 2:
             # print("Dentro ExAllocatePoolWithTag Function hook")
