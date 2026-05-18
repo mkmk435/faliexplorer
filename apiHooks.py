@@ -695,6 +695,7 @@ class HookExFreePoolWithTag(angr.SimProcedure):
                 utils.print_vuln('double free', 'ExFreePoolWithTag - buffer already freed', self.state, {'P': str(P), 'Tag': str(Tag)}, {'return address': hex(self.state.callstack.ret_addr)})
             else:
                 # Add to freed set
+                self.state.globals.setdefault('freed_buffer_asts', []).append(P)
                 self.state.globals['freed_buffers'].append(str(P))
                 # globals.freed_set.add(P)
                 # Remove from active buffers
@@ -722,6 +723,7 @@ class HookExFreePool(angr.SimProcedure):
                 utils.print_vuln('double free', 'ExFreePool - buffer already freed', self.state, {'P': str(P)}, {'return address': hex(self.state.callstack.ret_addr)})
             else:
                 # Add to freed set
+                self.state.globals.setdefault('freed_buffer_asts', []).append(P)
                 self.state.globals['freed_buffers'].append(str(P))
                 # globals.freed_set.add(P)
                 # Remove from active buffers
@@ -753,6 +755,7 @@ class HookExFreePool2(angr.SimProcedure):
                 utils.print_vuln('double free', 'ExFreePool2 - buffer already freed', self.state, {'P': str(P), 'Tag': str(Tag)}, {'return address': hex(self.state.callstack.ret_addr)})
             else:
                 # Add to freed set
+                self.state.globals.setdefault('freed_buffer_asts', []).append(P)
                 self.state.globals['freed_buffers'].append(str(P))
                 # globals.freed_set.add(P)
                 # Remove from active buffers

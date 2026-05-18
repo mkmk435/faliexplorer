@@ -11,6 +11,7 @@ import claripy
 import memHooks
 import techniques
 import traceback
+import itertools
 
 def hook_dangerous_asm(driver_path):
     total_instr, text_instr = utils.disasm_file(driver_path)
@@ -57,6 +58,204 @@ def hook_dangerous_asm(driver_path):
                 elif operands[1] == cr:
                     globals.proj.hook(instr.address, ophooks.r_cr_hook, instr.size)
 
+
+def _extend_to_arch(state, value):
+    if value.size() >= state.arch.bits:
+        return value
+    return claripy.ZeroExt(state.arch.bits - value.size(), value)
+
+
+def _prepare_ioctl_call_state(ioctl_handler_addr, base_state, ioctl_code, step_index=0, preserve_lifecycle=False):
+    base_state = utils._strip_discovery_breakpoints(base_state.copy())
+    ioctl_handler_kind = base_state.globals.get('ioctl_handler_kind')
+    device_object_addr = claripy.BVS(f'device_object_addr_{step_index}', base_state.arch.bits)
+    if globals.driver_framework == 'kmdf/wdf' or ioctl_handler_kind == 'wdm':
+        device_object_addr = base_state.globals.get('device_object_addr', device_object_addr)
+
+    globals.OutputBufferLength = claripy.BVS(f'OutputBufferLength_{step_index}', 32)
+    globals.InputBufferLength = claripy.BVS(f'InputBufferLength_{step_index}', 32)
+    globals.IoControlCode = claripy.BVV(ioctl_code, 32)
+    globals.SystemBuffer = claripy.BVS(f'SystemBuffer_{step_index}', base_state.arch.bits)
+    globals.Type3InputBuffer = claripy.BVS(f'Type3InputBuffer_{step_index}', base_state.arch.bits)
+    globals.UserBuffer = claripy.BVS(f'UserBuffer_{step_index}', base_state.arch.bits)
+
+    if ioctl_handler_kind == 'wdf_evt_io_device_control':
+        wdf_queue = base_state.globals.get('wdf_queue_handle', claripy.BVS(f'wdf_queue_handle_{step_index}', base_state.arch.bits))
+        wdf_request = base_state.globals.get('wdf_request_handle', utils.next_base_addr())
+        state = globals.proj.factory.call_state(
+            ioctl_handler_addr,
+            wdf_queue,
+            wdf_request,
+            _extend_to_arch(base_state, globals.OutputBufferLength),
+            _extend_to_arch(base_state, globals.InputBufferLength),
+            _extend_to_arch(base_state, globals.IoControlCode),
+            cc=globals.cc,
+            base_state=base_state
+        )
+        state.globals['wdf_request_handle'] = wdf_request
+    else:
+        state = globals.proj.factory.call_state(
+            ioctl_handler_addr,
+            device_object_addr,
+            globals.irp_addr,
+            cc=globals.cc,
+            base_state=base_state
+        )
+
+    state.registers.store('cr8', claripy.BVS(f'cr8_{step_index}', state.arch.bits))
+    state.memory.store(globals.irp_addr, claripy.BVS(f'irp_buf_{step_index}', 8 * 0x200))
+    utils.fixup_import_symbols(state)
+
+    lifecycle_defaults = {
+        'active_buffers': [],
+        'freed_buffers': [],
+        'freed_buffer_asts': [],
+    }
+    volatile_defaults = {
+        'open_section_handles': (),
+        'open_file_handles': (),
+        'tainted_ProbeForRead': (),
+        'tainted_ProbeForWrite': (),
+        'tainted_MmIsAddressValid': (),
+        'tainted_eprocess': (),
+        'tainted_handles': (),
+        'tainted_objects': (),
+        'tainted_process_context_changing': (),
+        'allocated_mdls': (),
+    }
+    for key, value in volatile_defaults.items():
+        state.globals[key] = state.globals.get(key, value)
+    for key, value in lifecycle_defaults.items():
+        if preserve_lifecycle:
+            state.globals[key] = state.globals.get(key, value)
+        else:
+            state.globals[key] = value.copy()
+
+    state.mem[globals.irp_addr].IRP.Tail.Overlay.s.u.CurrentStackLocation = globals.irsp_addr
+    state.mem[globals.irp_addr].IRP.AssociatedIrp.SystemBuffer = globals.SystemBuffer
+    state.mem[globals.irp_addr].IRP.UserBuffer = globals.UserBuffer
+    state.mem[globals.irp_addr].IRP.RequestorMode = 1
+    state.mem[globals.irsp_addr].IO_STACK_LOCATION.MajorFunction = 14
+    state.mem[globals.irsp_addr].IO_STACK_LOCATION.MinorFunction = claripy.BVS(f'MinorFunction_{step_index}', 8)
+
+    params = state.mem[globals.irsp_addr].IO_STACK_LOCATION.Parameters
+    params.DeviceIoControl.OutputBufferLength.val = globals.OutputBufferLength
+    params.DeviceIoControl.InputBufferLength.val = globals.InputBufferLength
+    params.DeviceIoControl.Type3InputBuffer = globals.Type3InputBuffer
+    params.DeviceIoControl.IoControlCode.val = ioctl_code
+
+    def materialize_indirect_wdf_request_buffer(s):
+        if ioctl_handler_kind != 'wdf_evt_io_device_control':
+            return
+        try:
+            request_arg = utils._call_arg(s, 0)
+            expected_request = s.globals.get('wdf_request_handle')
+            if isinstance(expected_request, int):
+                expected_request = claripy.BVV(expected_request, s.arch.bits)
+            if expected_request is None or not s.solver.satisfiable(extra_constraints=[request_arg == expected_request]):
+                return
+            buffer_out = utils._call_arg(s, 2)
+            if utils.is_stack_address(s, buffer_out):
+                s.memory.store(buffer_out, globals.SystemBuffer, s.arch.bytes, endness=s.arch.memory_endness, disable_actions=True, inspect=False)
+            length_out = utils._call_arg(s, 3)
+            if not s.solver.is_true(length_out == 0) and utils.is_stack_address(s, length_out):
+                s.memory.store(length_out, _extend_to_arch(s, globals.InputBufferLength), s.arch.bytes, endness=s.arch.memory_endness, disable_actions=True, inspect=False)
+        except Exception:
+            return
+
+    state.inspect.b('mem_read', when=angr.BP_BEFORE, action=memHooks.b_mem_read)
+    state.inspect.b('mem_write', when=angr.BP_BEFORE, action=memHooks.b_mem_write)
+    if ioctl_handler_kind == 'wdf_evt_io_device_control':
+        state.inspect.b('call', when=angr.BP_BEFORE, action=materialize_indirect_wdf_request_buffer)
+        state.inspect.b('call', when=angr.BP_BEFORE, action=memHooks.b_call)
+    state.inspect.b('call', when=angr.BP_BEFORE, action=memHooks.inspect_args_hook)
+    return state
+
+
+def _run_handler_state(state):
+    simgr = globals.proj.factory.simgr(state)
+    globals.simgr = simgr
+    simgr.use_technique(angr.exploration_techniques.DFS())
+    detector = techniques.ExplosionDetector(threshold=10000)
+    simgr.use_technique(detector)
+
+    while (len(simgr.active) > 0 or len(simgr.deferred) > 0) and not detector.state_exploded_bool:
+        try:
+            simgr.step(num_inst=1)
+        except Exception:
+            simgr.move(from_stash='active', to_stash='_Drop')
+
+    for stash_name in ('deadended', 'active', 'deferred'):
+        stash = getattr(simgr, stash_name, None)
+        if stash:
+            return stash[0].copy()
+    return None
+
+
+def _cross_handler_globals(driver_path):
+    candidates = []
+    for var in utils.discover_global_variables(driver_path):
+        ioctl_xrefs = [xref for xref in var['xrefs'] if xref.get('ioctl_codes')]
+        ioctl_codes = sorted({code for xref in ioctl_xrefs for code in xref['ioctl_codes']})
+        if len(ioctl_xrefs) <= 1 or len(ioctl_codes) <= 1:
+            continue
+        var = dict(var)
+        var['ioctl_xrefs'] = ioctl_xrefs
+        var['associated_ioctl_codes'] = ioctl_codes
+        candidates.append(var)
+    return candidates
+
+
+def _dump_cross_handler_globals(candidates):
+    print("\nCross-handler global candidates:")
+    if not candidates:
+        print("  none")
+        return
+    for var in candidates:
+        print(f"  global {hex(var['address'])} {var['section']}: {len(var['ioctl_xrefs'])} ioctl xrefs, codes {[hex(code) for code in var['associated_ioctl_codes']]}")
+        for xref in var['ioctl_xrefs']:
+            print(f"    xref {hex(xref['address'])}: {xref['ioctl_codes_hex']}")
+
+
+def _cross_handler_sequences(candidates, max_depth):
+    seen = set()
+    for var in candidates:
+        codes = var['associated_ioctl_codes']
+        depth = min(max_depth, len(codes))
+        for length in range(2, depth + 1):
+            for sequence in itertools.permutations(codes, length):
+                if sequence in seen:
+                    continue
+                seen.add(sequence)
+                yield sequence
+
+
+def run_cross_handler_evaluation(driver_path, ioctl_handler_addr, ioctl_handler_state):
+    candidates = _cross_handler_globals(driver_path)
+    _dump_cross_handler_globals(candidates)
+    if not candidates:
+        return
+
+    max_depth = max(2, getattr(globals.args, 'cross_depth', 4))
+    sequences = list(_cross_handler_sequences(candidates, max_depth))
+    print(f"\nCross-handler symbolic sequences: {len(sequences)}")
+
+    for sequence in sequences:
+        print(f"  exploring {' -> '.join(hex(code) for code in sequence)}")
+        state = ioctl_handler_state.copy()
+        state.globals['active_buffers'] = []
+        state.globals['freed_buffers'] = []
+        state.globals['freed_buffer_asts'] = []
+        state.globals['ioctl_sequence'] = tuple(hex(code) for code in sequence)
+
+        for index, ioctl_code in enumerate(sequence):
+            utils.track_discovered_ioctl_code(ioctl_code)
+            call_state = _prepare_ioctl_call_state(ioctl_handler_addr, state, ioctl_code, index, preserve_lifecycle=True)
+            call_state.globals['ioctl_sequence'] = tuple(hex(code) for code in sequence)
+            state = _run_handler_state(call_state)
+            if state is None:
+                break
+
         
 def find_vulns(driver_path, ioctl_handler_addr, ioctl_handler_state, specific_ioctl_code=None):
 
@@ -85,6 +284,7 @@ def find_vulns(driver_path, ioctl_handler_addr, ioctl_handler_state, specific_io
 
     ioctl_handler_state.globals['active_buffers'] = []
     ioctl_handler_state.globals['freed_buffers'] = []
+    ioctl_handler_state.globals['freed_buffer_asts'] = []
     # ioctl_handler_state.globals['tainted_translated_addresses'] = ()
 
     def extend_to_arch(value):
@@ -200,6 +400,7 @@ def find_vulns(driver_path, ioctl_handler_addr, ioctl_handler_state, specific_io
 
     # Add check for custom ioctl codes
     if specific_ioctl_code is not None:
+        utils.track_discovered_ioctl_code(specific_ioctl_code)
         _params.DeviceIoControl.IoControlCode.val = specific_ioctl_code
         state.add_constraints(globals.IoControlCode == specific_ioctl_code)
     else:
@@ -229,6 +430,9 @@ def find_vulns(driver_path, ioctl_handler_addr, ioctl_handler_state, specific_io
         for s in globals.simgr.errored:
             # utils.print_error(f'{repr(s)}')
             print(f'{repr(s)}')
+
+    if getattr(globals.args, 'cross_handler', False) and specific_ioctl_code is None:
+        run_cross_handler_evaluation(driver_path, ioctl_handler_addr, ioctl_handler_state)
 
 def hookDriver(driver_path):
 
@@ -368,6 +572,9 @@ if __name__ == "__main__":
     parser.add_argument('-i', '--ioctlcode', nargs='*', default=[], help='analyze specified IoControlCode(s) (e.g. 22201c 222020 222024). If not specified, all will be analyzed')
     parser.add_argument('-c', '--complete', default=False, action='store_true', help='only report vulnerabilities with complete execution paths to STATUS_SUCCESS (default False)')
     parser.add_argument('-a', '--address', type=str, default=None, help='manually specify the address of the IOCTL handler (in hex, e.g. 0x12345678). If not specified, it will be automatically detected by traversing DriverEntry')
+    parser.add_argument('--find-ioctls-symbolic', default=False, action='store_true', help='use symbolic execution to discover IoControlCode values and related handler blocks instead of running vulnerability checks')
+    parser.add_argument('--cross-handler', default=False, action='store_true', help='after classic analysis, run global-xref guided cross-handler IOCTL sequence evaluation')
+    parser.add_argument('--cross-depth', type=int, default=4, help='maximum IOCTL sequence length for --cross-handler (default 4)')
     globals.args = parser.parse_args()
 
     driver = globals.args.path
@@ -418,6 +625,11 @@ if __name__ == "__main__":
     #     raise SystemExit(1)
 
     # Handle IOCTL codes
+    # if globals.args.find_ioctls_symbolic:
+    #     if globals.args.ioctlcode:
+    #         print("Ignoring --ioctlcode because --find-ioctls-symbolic discovers codes instead of analyzing specified codes.")
+    #     print("Discovering IoControlCodes with symbolic execution...")
+    #     find_ioctl_codes_symbolic(driver, ioctl_handler, ioctl_handler_state)
     if globals.args.ioctlcode:
         # If specific IOCTL codes are provided, analyze each one
         print(f"Analyzing {len(globals.args.ioctlcode)} specified IoControlCode(s)...")
@@ -430,6 +642,8 @@ if __name__ == "__main__":
                 find_vulns(driver, ioctl_handler, ioctl_handler_state, specific_ioctl_code=ioctl_code_int)
             except ValueError:
                 print(f"Error: Invalid hex value for IoControlCode: {ioctl_code_str}")
+        if globals.args.cross_handler:
+            run_cross_handler_evaluation(driver, ioctl_handler, ioctl_handler_state)
     else:
         # If no specific IOCTL codes, analyze all
         print("Analyzing all IoControlCodes...")

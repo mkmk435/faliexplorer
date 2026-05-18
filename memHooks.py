@@ -4,24 +4,64 @@ import utils
 import angr
 import traceback
 
+def _check_freed_memory_access(state, address, access_type):
+    if globals.phase != 2:
+        return
+
+    freed_asts = state.globals.get('freed_buffer_asts', ())
+    freed_strings = state.globals.get('freed_buffers', ())
+    if not freed_asts and not freed_strings:
+        return
+
+    address_text = str(address)
+    address_vars = getattr(address, 'variables', set())
+    reported = state.globals.setdefault('reported_uaf_accesses', set())
+
+    for freed in freed_asts:
+        freed_text = str(freed)
+        freed_vars = getattr(freed, 'variables', set())
+        if freed_text not in address_text and not (address_vars and freed_vars and address_vars.intersection(freed_vars)):
+            continue
+
+        key = (access_type, freed_text, address_text)
+        if key in reported:
+            return
+        reported.add(key)
+        utils.print_vuln(
+            'use-after-free',
+            f'{access_type} freed memory',
+            state,
+            {
+                'freed_buffer': freed_text,
+                'ioctl_sequence': state.globals.get('ioctl_sequence', ()),
+            },
+            {'access_address': address_text}
+        )
+        return
+
+    for freed_text in freed_strings:
+        if freed_text and freed_text in address_text:
+            key = (access_type, freed_text, address_text)
+            if key in reported:
+                return
+            reported.add(key)
+            utils.print_vuln(
+                'use-after-free',
+                f'{access_type} freed memory',
+                state,
+                {
+                    'freed_buffer': freed_text,
+                    'ioctl_sequence': state.globals.get('ioctl_sequence', ()),
+                },
+                {'access_address': address_text}
+            )
+            return
+
 def b_mem_read(state):
     # utils.print_debug(f'mem_read {state}, {state.inspect.mem_read_address}, {state.inspect.mem_read_expr}, {state.inspect.mem_read_length}, {state.inspect.mem_read_condition}')
     
     try:
-        # =====================================================================
-        # Use-After-Free Detection
-        # =====================================================================
-        # if globals.phase == 2:
-        #     # check se il read_addr e' simbolico
-        #     if state.inspect.mem_read_address.symbolic:
-        #         read_addr = state.inspect.mem_read_address
-        #         print("Read_addr:", read_addr)
-        #         print('free_buffers: ',state.globals['freed_buffers'])
-        #         for freed_addr in state.globals['freed_buffers']:
-        #             print(f'read_addr: {read_addr} freed_addr: {freed_addr}')
-        #             if read_addr == freed_addr:
-        #                 utils.print_vuln('use-after-free', 'read from freed memory', state, {}, {'read from': hex(read_addr)})
-        #                 break
+        _check_freed_memory_access(state, state.inspect.mem_read_address, 'read')
             
         # Iterate all target buffers.
         for target in globals.NPD_TARGETS:
@@ -185,6 +225,8 @@ def b_mem_write(state):
     # utils.print_debug(f'mem_write {state}, {state.inspect.mem_write_address}, {state.inspect.mem_write_expr}, {state.inspect.mem_write_length}, {state.inspect.mem_write_condition}')
 
     try:
+        _check_freed_memory_access(state, state.inspect.mem_write_address, 'write')
+
         # Iterate all target buffers.
         for target in globals.NPD_TARGETS:
             if target in str(state.inspect.mem_write_address):

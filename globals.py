@@ -30,6 +30,8 @@ OutputBufferLength = None
 InputBufferLength = None
 
 basic_info = {}
+discovered_ioctl_codes = set()
+ioctl_xref_trace = {}
 
 
 active_buffers = {}

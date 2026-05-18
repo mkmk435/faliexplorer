@@ -17,8 +17,10 @@ The finder covers:
 from __future__ import annotations
 
 import json
+import os
 import re
 import sys
+import traceback
 from dataclasses import dataclass
 from typing import Dict, Iterable, List, Optional, Sequence, Tuple
 
@@ -30,6 +32,7 @@ try:
     import ida_ida
     import ida_idaapi
     import ida_idp
+    import ida_kernwin
     import ida_nalt
     import ida_segment
     import ida_ua
@@ -43,6 +46,7 @@ except ImportError:
     ida_ida = None
     ida_idaapi = None
     ida_idp = None
+    ida_kernwin = None
     ida_nalt = None
     ida_segment = None
     ida_ua = None
@@ -942,6 +946,10 @@ def _print_candidates(candidates: Sequence[IoctlHandlerCandidate]) -> None:
 
 
 def _write_json(path: str, candidates: Sequence[IoctlHandlerCandidate]) -> None:
+    path = os.path.expanduser(path)
+    if not os.path.isabs(path):
+        path = os.path.abspath(path)
+
     data = {
         "handler": candidates[0].to_dict() if candidates else None,
         "candidates": [candidate.to_dict() for candidate in candidates],
@@ -951,14 +959,32 @@ def _write_json(path: str, candidates: Sequence[IoctlHandlerCandidate]) -> None:
     print("Wrote %s" % path)
 
 
+def _ida_is_batch() -> bool:
+    try:
+        return bool(getattr(ida_kernwin.cvar, "batch", 0))
+    except Exception:
+        return False
+
+
+def _script_args() -> List[str]:
+    raw = list(getattr(idc, "ARGV", []) or [])
+    if not raw:
+        return list(sys.argv[1:])
+
+    first = os.path.basename(str(raw[0])).lower()
+    if first.endswith(".py"):
+        return [str(arg) for arg in raw[1:]]
+    return [str(arg) for arg in raw]
+
+
 def main(argv: Optional[Sequence[str]] = None) -> int:
     _require_ida()
     if argv is None:
-        argv = list(getattr(idc, "ARGV", sys.argv))[1:]
+        argv = _script_args()
 
     json_path = None
     print_all = False
-    no_exit = False
+    no_exit = not _ida_is_batch()
     idx = 0
     while idx < len(argv):
         arg = argv[idx]
@@ -998,5 +1024,43 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
     return 0 if candidates else 1
 
 
+def _ida_script_entry_requested() -> bool:
+    if ida_auto is None:
+        return False
+
+    argv = [str(arg) for arg in list(getattr(idc, "ARGV", []) or [])]
+    if not argv:
+        return False
+
+    if any(os.path.basename(arg).lower() == "ida_ioctl_finder.py" for arg in argv):
+        return True
+    return any(arg in {"--json", "--all", "--no-exit"} for arg in argv)
+
+
+def _write_error_log() -> str:
+    path = os.path.abspath("ida_ioctl_finder_error.txt")
+    with open(path, "w") as f:
+        traceback.print_exc(file=f)
+    return path
+
+
+def _run_script_entrypoint() -> int:
+    try:
+        return main()
+    except SystemExit:
+        raise
+    except Exception:
+        traceback.print_exc()
+        try:
+            print("Wrote %s" % _write_error_log())
+        except Exception:
+            pass
+        if ida_auto is not None and _ida_is_batch():
+            idc.qexit(2)
+        return 2
+
+
 if __name__ == "__main__":
-    sys.exit(main())
+    _run_script_entrypoint()
+elif _ida_script_entry_requested():
+    _run_script_entrypoint()

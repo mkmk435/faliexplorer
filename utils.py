@@ -24,8 +24,28 @@ vuln_rips = []
 past_ioctls = []
 vulnerabilities_list = []
 current_driver_file = None  # Will be set to the driver filename being analyzed
+current_driver_path = None  # Full path of the driver currently being analyzed
 REPORT_DIR = "reports"
 REPORT_FILE = None  # Will be set based on the driver name
+
+
+def track_discovered_ioctl_code(ioctl_code):
+    """Remember an IOCTL code for later cross-handler/global-xref analysis."""
+    try:
+        ioctl_int = int(ioctl_code)
+    except Exception:
+        return None
+
+    globals.discovered_ioctl_codes.add(ioctl_int)
+    globals.basic_info.setdefault('IoControlCodes', [])
+    ioctl_hex = hex(ioctl_int)
+    if ioctl_hex not in globals.basic_info['IoControlCodes']:
+        globals.basic_info['IoControlCodes'].append(ioctl_hex)
+    return ioctl_int
+
+
+def get_discovered_ioctl_codes():
+    return sorted(globals.discovered_ioctl_codes)
 
 def next_base_addr(size=0x10000):
     v = globals.FIRST_ADDR
@@ -1286,9 +1306,13 @@ def tainted_buffer(buffer):
 
 def set_current_driver(driver_path):
     """Set the current driver being analyzed. Should be called at the start of analysis."""
-    global current_driver_file, REPORT_FILE, vulnerabilities_list
+    global current_driver_file, current_driver_path, REPORT_FILE, vulnerabilities_list
     import os
     vulnerabilities_list = []  # Reset vulnerabilities for new driver
+    globals.discovered_ioctl_codes = set()
+    globals.ioctl_xref_trace = {}
+    globals.basic_info['IoControlCodes'] = []
+    current_driver_path = driver_path
     current_driver_file = os.path.splitext(os.path.basename(driver_path))[0]
     REPORT_FILE = os.path.join(REPORT_DIR, f"{current_driver_file}_report.json")
     print(f"[INFO] Starting analysis for driver: {current_driver_file}")
@@ -1406,6 +1430,559 @@ def resolve_import_symbol(loader: cle.loader.Loader, symbol_name: str) -> Option
             return result
     
     return None
+
+
+def _normalize_ioctl_code_candidates(ioctl_codes):
+    normalized = set()
+    for code in ioctl_codes or []:
+        try:
+            if isinstance(code, str):
+                normalized.add(int(code, 16 if code.lower().startswith('0x') else 0))
+            else:
+                normalized.add(int(code))
+        except Exception:
+            continue
+    return normalized
+
+
+def _instruction_immediates(instr):
+    values = set()
+    for literal in re.findall(r'0x[0-9a-fA-F]+|[0-9a-fA-F]+h|\b\d+\b', instr.op_str):
+        parsed = _parse_int_literal(literal)
+        if parsed is not None:
+            values.add(parsed)
+    return values
+
+
+def _cfg_predecessor_ioctl_sources(instr_addr, known_ioctl_codes, max_depth=3):
+    if not known_ioctl_codes or getattr(globals, 'cfg', None) is None:
+        return []
+
+    try:
+        start_node = globals.cfg.get_any_node(instr_addr, anyaddr=True)
+    except Exception:
+        start_node = None
+    if start_node is None:
+        return []
+
+    sources = []
+    queue = [(start_node, 0)]
+    seen = set()
+
+    while queue:
+        node, depth = queue.pop(0)
+        node_id = (node.addr, getattr(node, 'size', None))
+        if node_id in seen or depth > max_depth:
+            continue
+        seen.add(node_id)
+
+        try:
+            block = globals.proj.factory.block(node.addr, size=node.size)
+            for block_instr in block.capstone.insns:
+                matches = _instruction_immediates(block_instr).intersection(known_ioctl_codes)
+                for ioctl_code in matches:
+                    sources.append({
+                        'ioctl': ioctl_code,
+                        'source': 'cfg_predecessor' if depth else 'cfg_block',
+                        'address': block_instr.address,
+                        'mnemonic': block_instr.mnemonic,
+                        'op_str': block_instr.op_str,
+                        'distance': depth,
+                    })
+        except Exception:
+            pass
+
+        if depth == max_depth:
+            continue
+
+        try:
+            predecessors = list(globals.cfg.graph.predecessors(node))
+        except Exception:
+            predecessors = []
+
+        for pred in predecessors:
+            if getattr(pred, 'function_address', None) == getattr(start_node, 'function_address', None):
+                queue.append((pred, depth + 1))
+
+    return sources
+
+
+def _local_ioctl_sources_for_xref(instructions, instr_index, known_ioctl_codes, window=80):
+    if not known_ioctl_codes:
+        return []
+
+    sources = []
+    start = max(0, instr_index - window)
+    end = min(len(instructions), instr_index + 16)
+
+    for idx in range(start, end):
+        instr = instructions[idx]
+        matches = _instruction_immediates(instr).intersection(known_ioctl_codes)
+        for ioctl_code in matches:
+            sources.append({
+                'ioctl': ioctl_code,
+                'source': 'local_window',
+                'address': instr.address,
+                'mnemonic': instr.mnemonic,
+                'op_str': instr.op_str,
+                'distance': abs(instr_index - idx),
+            })
+
+    return sources
+
+
+def _dedupe_ioctl_sources(sources):
+    best_by_code = {}
+    for source in sources:
+        ioctl_code = source['ioctl']
+        old = best_by_code.get(ioctl_code)
+        if old is None or source.get('distance', 999999) < old.get('distance', 999999):
+            best_by_code[ioctl_code] = source
+    return sorted(best_by_code.values(), key=lambda source: (source.get('distance', 0), source['ioctl']))
+
+
+def _direct_call_target(instr):
+    if not instr.mnemonic.startswith('call'):
+        return None
+
+    rip_target = _resolve_rip_relative_operand(instr)
+    if rip_target is not None:
+        pointed = _read_project_word(rip_target)
+        return pointed if pointed is not None else rip_target
+
+    for literal in re.findall(r'0x[0-9a-fA-F]+|[0-9a-fA-F]+h', instr.op_str):
+        parsed = _parse_int_literal(literal)
+        if parsed is not None:
+            return parsed
+    return None
+
+
+def _callsite_ioctl_sources_for_function(instructions, instruction_index, function_addr, known_ioctl_codes, max_depth=2):
+    if not function_addr or not known_ioctl_codes or getattr(globals, 'cfg', None) is None:
+        return []
+
+    sources = []
+    queue = [(function_addr, 0)]
+    seen = set()
+
+    while queue:
+        callee_addr, depth = queue.pop(0)
+        if callee_addr in seen or depth > max_depth:
+            continue
+        seen.add(callee_addr)
+
+        try:
+            callers = list(globals.cfg.kb.functions.callgraph.predecessors(callee_addr))
+        except Exception:
+            callers = []
+
+        for caller_addr in callers:
+            caller = globals.cfg.kb.functions.get(caller_addr)
+            if caller is None:
+                continue
+
+            for block in caller.blocks:
+                for call_instr in block.capstone.insns:
+                    if _direct_call_target(call_instr) != callee_addr:
+                        continue
+
+                    call_idx = instruction_index.get(call_instr.address)
+                    if call_idx is None:
+                        continue
+
+                    for source in _cfg_predecessor_ioctl_sources(call_instr.address, known_ioctl_codes):
+                        source = dict(source)
+                        source['source'] = f'caller_{source["source"]}'
+                        source['callsite'] = call_instr.address
+                        source['caller_function'] = caller_addr
+                        source['callee_function'] = callee_addr
+                        source['distance'] = source.get('distance', 0) + depth + 1
+                        sources.append(source)
+
+                    for source in _local_ioctl_sources_for_xref(instructions, call_idx, known_ioctl_codes):
+                        source = dict(source)
+                        source['source'] = 'caller_local_window'
+                        source['callsite'] = call_instr.address
+                        source['caller_function'] = caller_addr
+                        source['callee_function'] = callee_addr
+                        source['distance'] = source.get('distance', 0) + depth + 1
+                        sources.append(source)
+
+            if depth + 1 <= max_depth:
+                queue.append((caller_addr, depth + 1))
+
+    return sources
+
+
+def _trace_ioctl_codes_for_xref(instructions, instruction_index, instr_index, known_ioctl_codes, function_addr=None):
+    sources = []
+    sources.extend(_cfg_predecessor_ioctl_sources(instructions[instr_index].address, known_ioctl_codes))
+    sources.extend(_local_ioctl_sources_for_xref(instructions, instr_index, known_ioctl_codes))
+    sources.extend(_callsite_ioctl_sources_for_function(
+        instructions,
+        instruction_index,
+        function_addr,
+        known_ioctl_codes
+    ))
+    return _dedupe_ioctl_sources(sources)
+
+
+def discover_global_variables(driver_path, include_readonly=False, min_xrefs=1, ioctl_codes=None, trace_ioctl_codes=True):
+    """
+    Discover global-like storage by scanning non-executable PE sections and
+    collecting code references to those ranges.
+
+    Returns a list of dictionaries:
+      {
+        'address': int,
+        'section': str,
+        'size': int,
+        'xrefs': [
+          {'address': int, 'mnemonic': str, 'op_str': str, 'target': int,
+           'function': int | None, 'ioctl_codes': [int]}
+        ]
+      }
+
+    This is intentionally conservative and static. It is meant to seed the
+    optional cross-IOCTL analysis, not to prove that every discovered address is
+    definitely a semantic global variable.
+    """
+    pe = pefile.PE(driver_path)
+    image_base = pe.OPTIONAL_HEADER.ImageBase
+    pointer_size = 8 if pe.FILE_HEADER.Machine == 0x8664 else 4
+
+    IMAGE_SCN_MEM_EXECUTE = 0x20000000
+    IMAGE_SCN_MEM_WRITE = 0x80000000
+    IMAGE_SCN_CNT_UNINITIALIZED_DATA = 0x00000080
+
+    data_ranges = []
+    for section in pe.sections:
+        name = section.Name.decode('utf-8', errors='ignore').strip('\x00')
+        start = image_base + section.VirtualAddress
+        virtual_size = max(section.Misc_VirtualSize, section.SizeOfRawData)
+        end = start + virtual_size
+        is_executable = bool(section.Characteristics & IMAGE_SCN_MEM_EXECUTE)
+        is_writable = bool(section.Characteristics & IMAGE_SCN_MEM_WRITE)
+        is_bss = bool(section.Characteristics & IMAGE_SCN_CNT_UNINITIALIZED_DATA)
+        is_readonly_data = name.lower() in {'.rdata', 'rdata', 'pdata', '.pdata'}
+
+        if is_executable:
+            continue
+        if not is_writable and not is_bss and not (include_readonly and is_readonly_data):
+            continue
+
+        data_ranges.append({
+            'name': name,
+            'start': start,
+            'end': end,
+            'size': virtual_size,
+            'writable': is_writable,
+        })
+
+    if not data_ranges:
+        return []
+
+    instructions, _ = disasm_file(driver_path)
+    instruction_index = {instr.address: idx for idx, instr in enumerate(instructions)}
+    known_ioctl_codes = _normalize_ioctl_code_candidates(
+        ioctl_codes if ioctl_codes is not None else get_discovered_ioctl_codes()
+    )
+    globals_by_addr = {}
+
+    def range_for_addr(addr):
+        for data_range in data_ranges:
+            if data_range['start'] <= addr < data_range['end']:
+                return data_range
+        return None
+
+    def containing_function(addr):
+        try:
+            if getattr(globals, 'cfg', None) is None:
+                return None
+            func = globals.cfg.kb.functions.floor_func(addr)
+            return func.addr if func else None
+        except Exception:
+            return None
+
+    for instr in instructions:
+        targets = set()
+        rip_target = _resolve_rip_relative_operand(instr)
+        if rip_target is not None:
+            targets.add(rip_target)
+
+        for literal in re.findall(r'0x[0-9a-fA-F]+|[0-9a-fA-F]+h', instr.op_str):
+            parsed = _parse_int_literal(literal)
+            if parsed is not None:
+                targets.add(parsed)
+
+        for target in targets:
+            data_range = range_for_addr(target)
+            if data_range is None:
+                continue
+
+            # Bucket nearby references by pointer-sized slots. This avoids
+            # creating a different "global" for every field access like g+8.
+            slot_addr = data_range['start'] + ((target - data_range['start']) // pointer_size) * pointer_size
+            entry = globals_by_addr.setdefault(slot_addr, {
+                'address': slot_addr,
+                'section': data_range['name'],
+                'size': pointer_size,
+                'writable_section': data_range['writable'],
+                'xrefs': [],
+            })
+            xref = {
+                'address': instr.address,
+                'mnemonic': instr.mnemonic,
+                'op_str': instr.op_str,
+                'target': target,
+                'function': containing_function(instr.address),
+                'ioctl_codes': [],
+                'ioctl_codes_hex': [],
+                'ioctl_code_sources': [],
+            }
+
+            if trace_ioctl_codes and known_ioctl_codes:
+                sources = _trace_ioctl_codes_for_xref(
+                    instructions,
+                    instruction_index,
+                    instruction_index[instr.address],
+                    known_ioctl_codes,
+                    xref['function']
+                )
+                xref['ioctl_code_sources'] = sources
+                xref['ioctl_codes'] = [source['ioctl'] for source in sources]
+                xref['ioctl_codes_hex'] = [hex(source['ioctl']) for source in sources]
+
+                if sources:
+                    globals.ioctl_xref_trace.setdefault(instr.address, set()).update(xref['ioctl_codes'])
+
+            entry['xrefs'].append(xref)
+
+    result = [
+        entry for entry in globals_by_addr.values()
+        if len(entry['xrefs']) >= min_xrefs
+    ]
+    result.sort(key=lambda entry: (-len(entry['xrefs']), entry['address']))
+    return result
+
+
+def classify_global_xrefs(global_variables, instructions=None, window=8):
+    """
+    Classify xrefs returned by discover_global_variables().
+
+    The classifier is best-effort and intentionally lightweight:
+      - operation: read, write, read_write, address_taken, unknown
+      - lifecycle: acquire, release, use, write, read, unknown
+
+    acquire/release/use are inferred from short local instruction windows, so
+    the result should be used as a candidate generator for later symbolic
+    validation rather than as a final vulnerability finding.
+    """
+    if instructions is None:
+        if current_driver_path is None:
+            raise ValueError("instructions must be provided when current_driver_path is not set")
+        instructions, _ = disasm_file(current_driver_path)
+
+    instructions_by_addr = {instr.address: instr for instr in instructions}
+    instruction_index = {instr.address: idx for idx, instr in enumerate(instructions)}
+
+    allocate_apis = {
+        'exallocatepool', 'exallocatepoolwithtag', 'exallocatepoolwithquotatag',
+        'exallocatepoolzero', 'exallocatepool2', 'exallocatepool3',
+        'mmallocatenoncachedmemory', 'mmallocatecontiguousmemoryspecifycache',
+        'mmmapiospace', 'mmmapiospaceex', 'zwmapviewofsection',
+        'ioallocatemdl',
+    }
+    release_apis = {
+        'exfreepool', 'exfreepoolwithtag', 'exfreepool2',
+        'mmunmapiospace', 'zwunmapviewofsection', 'zwclose',
+        'obclosehandle', 'ioclosefile',
+    }
+
+    def import_names_by_iat():
+        names = {}
+        try:
+            pe_object = globals.proj.loader.main_object
+            for name, sym_import in pe_object.imports.items():
+                names[pe_object.min_addr + sym_import.relative_addr] = name.lower()
+        except Exception:
+            pass
+        return names
+
+    iat_names = import_names_by_iat()
+
+    def normalize_api_name(name):
+        if not name:
+            return None
+        return name.lower().split('!')[-1].split('@')[0]
+
+    def resolve_call_name(instr):
+        if not instr.mnemonic.startswith('call'):
+            return None
+
+        candidates = []
+        rip_target = _resolve_rip_relative_operand(instr)
+        if rip_target is not None:
+            candidates.append(rip_target)
+            pointed = _read_project_word(rip_target)
+            if pointed is not None:
+                candidates.append(pointed)
+
+        for literal in re.findall(r'0x[0-9a-fA-F]+|[0-9a-fA-F]+h', instr.op_str):
+            parsed = _parse_int_literal(literal)
+            if parsed is not None:
+                candidates.append(parsed)
+
+        for candidate in candidates:
+            if candidate in iat_names:
+                return normalize_api_name(iat_names[candidate])
+            try:
+                symbol = globals.proj.loader.find_symbol(candidate)
+                if symbol is not None and symbol.name:
+                    return normalize_api_name(symbol.name)
+            except Exception:
+                pass
+        return None
+
+    def operand_refs_target(operand, target):
+        operand = operand.lower()
+        if '[rip' in operand:
+            return False
+
+        for literal in re.findall(r'0x[0-9a-fA-F]+|[0-9a-fA-F]+h', operand):
+            parsed = _parse_int_literal(literal)
+            if parsed == target:
+                return True
+        return False
+
+    def referenced_operands(instr, target):
+        operands = _split_instruction_operands(instr.op_str)
+        referenced = []
+
+        rip_target = _resolve_rip_relative_operand(instr)
+        for idx, operand in enumerate(operands):
+            if rip_target == target and '[rip' in operand:
+                referenced.append((idx, operand, True))
+            elif operand_refs_target(operand, target):
+                referenced.append((idx, operand, '[' in operand and ']' in operand))
+
+        return operands, referenced
+
+    def base_register_from_memory_operand(operand):
+        match = re.search(r'\[([a-z][a-z0-9]*)', operand.lower())
+        if not match:
+            return None
+        reg = _canonical_register_name(match.group(1))
+        if reg == 'rip':
+            return None
+        return reg
+
+    def written_register(instr):
+        parts = _split_instruction_operands(instr.op_str)
+        if not parts:
+            return None
+        if instr.mnemonic.startswith(('mov', 'lea', 'xor', 'sub', 'add')) and '[' not in parts[0]:
+            return _canonical_register_name(parts[0])
+        return None
+
+    def operation_for_xref(instr, target):
+        operands, refs = referenced_operands(instr, target)
+        if not refs:
+            return 'unknown', None
+
+        mnemonic = instr.mnemonic.lower()
+        has_mem_ref = any(is_mem for _, _, is_mem in refs)
+        ref_indexes = {idx for idx, _, _ in refs}
+        first_ref = refs[0][1]
+
+        if mnemonic in {'cmp', 'test'}:
+            return 'read', base_register_from_memory_operand(first_ref)
+        if mnemonic in {'lea'}:
+            return 'address_taken', _canonical_register_name(operands[0]) if operands else None
+        if mnemonic in {'inc', 'dec', 'neg', 'not'} and 0 in ref_indexes and has_mem_ref:
+            return 'read_write', base_register_from_memory_operand(first_ref)
+        if mnemonic.startswith(('lock', 'xadd', 'xchg')):
+            return 'read_write', base_register_from_memory_operand(first_ref)
+        if mnemonic.startswith('mov') and 0 in ref_indexes and has_mem_ref:
+            return 'write', None
+        if mnemonic.startswith('mov') and any(idx > 0 for idx in ref_indexes):
+            return 'read', _canonical_register_name(operands[0]) if operands and '[' not in operands[0] else None
+        if mnemonic.startswith('call'):
+            return 'read', None
+        return 'read' if has_mem_ref else 'address_taken', base_register_from_memory_operand(first_ref)
+
+    def previous_call_name(idx, max_window):
+        for prev in reversed(instructions[max(0, idx - max_window):idx]):
+            name = resolve_call_name(prev)
+            if name:
+                return name
+        return None
+
+    def next_call_name(idx, max_window):
+        for nxt in instructions[idx + 1:idx + 1 + max_window]:
+            name = resolve_call_name(nxt)
+            if name:
+                return name
+        return None
+
+    def register_used_as_memory_base(idx, reg, max_window):
+        if reg is None:
+            return False
+        for nxt in instructions[idx + 1:idx + 1 + max_window]:
+            if written_register(nxt) == reg:
+                return False
+            for operand in _split_instruction_operands(nxt.op_str):
+                if '[' in operand and base_register_from_memory_operand(operand) == reg:
+                    return True
+        return False
+
+    classified_globals = []
+    for global_entry in global_variables:
+        classified_entry = dict(global_entry)
+        classified_xrefs = []
+        global_addr = global_entry['address']
+
+        for xref in global_entry.get('xrefs', []):
+            instr = instructions_by_addr.get(xref['address'])
+            if instr is None:
+                annotated = dict(xref)
+                annotated.update({'operation': 'unknown', 'lifecycle': 'unknown'})
+                classified_xrefs.append(annotated)
+                continue
+
+            idx = instruction_index[instr.address]
+            operation, result_reg = operation_for_xref(instr, xref.get('target', global_addr))
+            prev_call = previous_call_name(idx, window)
+            next_call = next_call_name(idx, window)
+            lifecycle = 'unknown'
+
+            if operation in {'write', 'read_write'} and prev_call in allocate_apis:
+                lifecycle = 'acquire'
+            elif operation in {'read', 'read_write'} and next_call in release_apis:
+                lifecycle = 'release'
+            elif operation in {'read', 'read_write'} and register_used_as_memory_base(idx, result_reg, window):
+                lifecycle = 'use'
+            elif operation in {'write', 'read_write'}:
+                lifecycle = 'write'
+            elif operation == 'read':
+                lifecycle = 'read'
+
+            annotated = dict(xref)
+            annotated.update({
+                'operation': operation,
+                'lifecycle': lifecycle,
+                'previous_call': prev_call,
+                'next_call': next_call,
+                'result_register': result_reg,
+            })
+            classified_xrefs.append(annotated)
+
+        classified_entry['xrefs'] = classified_xrefs
+        classified_entry['operations'] = sorted({xref['operation'] for xref in classified_xrefs})
+        classified_entry['lifecycles'] = sorted({xref['lifecycle'] for xref in classified_xrefs})
+        classified_globals.append(classified_entry)
+
+    return classified_globals
 
 
 # Viene usato negli hoo a Zw*File

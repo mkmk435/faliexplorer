@@ -40,8 +40,9 @@ class ExplosionDetector(angr.exploration_techniques.ExplorationTechnique):
                     ioctl = state.solver.eval_one(globals.IoControlCode)
                     state.globals['IoControlCode'] = ioctl
                     if ioctl not in self.ioctl_history:
+                        self.ioctl_history.append(ioctl)
+                        utils.track_discovered_ioctl_code(ioctl)
                         print(f'start testing IoControlCode {hex(ioctl)}')
-                        # globals.basic_info['IoControlCodes'].append(hex(ioctl))
                         self.ioctl_timer[ioctl] = time.time()
                 except angr.errors.SimValueError:
                     pass
